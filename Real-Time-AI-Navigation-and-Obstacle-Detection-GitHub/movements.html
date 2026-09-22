@@ -1,0 +1,3306 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no" />
+  <meta name="theme-color" content="#00e5ff" />
+  <meta name="description" content="Real-time obstacle detection and emergency navigation for blind users" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="Blind Nav" />
+  <link rel="manifest" href="/manifest.json" />
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 192 192'><rect fill='%230a0a0f' width='192' height='192'/><circle cx='96' cy='96' r='60' fill='%2300e5ff'/></svg>" />
+  <title>🦯 Blind Navigation Assist</title>
+  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <!-- Google Maps: enable "Maps JavaScript API" for the key below -->
+  <meta name="google-maps-api-key" content="YOUR_GOOGLE_MAPS_API_KEY" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #0a0a0f;
+      --surface: #13131a;
+      --surface-2: #171722;
+      --border: #2a2a3a;
+      --accent: #00e5ff;
+      --warn: #ff6b35;
+      --ok: #39ff14;
+      --idle: #ffe600;
+      --sit: #bf5fff;
+      --text: #e8e8f0;
+      --muted: #757595;
+      --font-head: 'Syne', sans-serif;
+      --font-mono: 'DM Mono', monospace;
+    }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: var(--font-mono);
+      min-height: 100dvh;
+      padding: 18px 12px 28px;
+      overflow-x: hidden;
+    }
+
+    body::before {
+      content: '';
+      position: fixed; inset: 0;
+      background-image:
+        linear-gradient(rgba(0,229,255,.03) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(0,229,255,.03) 1px, transparent 1px);
+      background-size: 32px 32px;
+      pointer-events: none;
+    }
+
+    .app {
+      width: min(1200px, 100%);
+      margin: 0 auto;
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 14px;
+      position: relative;
+      z-index: 1;
+    }
+
+    .top {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      padding: 14px;
+      border-radius: 14px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+    }
+
+    .title h1 {
+      font-family: var(--font-head);
+      font-size: clamp(1.2rem, 3.8vw, 1.9rem);
+      color: var(--accent);
+      letter-spacing: -0.02em;
+    }
+
+    .title p {
+      color: var(--muted);
+      font-size: 0.75rem;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      margin-top: 3px;
+    }
+
+    #status-pill {
+      font-size: .65rem;
+      letter-spacing: .1em;
+      text-transform: uppercase;
+      padding: 6px 12px;
+      border-radius: 99px;
+      border: 1px solid var(--border);
+      color: var(--muted);
+      transition: .2s;
+      white-space: nowrap;
+    }
+    #status-pill.live { border-color: var(--ok); color: var(--ok); }
+    #status-pill.err { border-color: var(--warn); color: var(--warn); }
+
+    #camera-pill {
+      font-size: .65rem;
+      letter-spacing: .1em;
+      text-transform: uppercase;
+      padding: 6px 12px;
+      border-radius: 99px;
+      border: 1px solid var(--border);
+      color: var(--muted);
+      transition: .2s;
+      white-space: nowrap;
+    }
+    #camera-pill.live { border-color: var(--ok); color: var(--ok); }
+    #camera-pill.err { border-color: var(--warn); color: var(--warn); }
+
+    .grid {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 14px;
+    }
+
+    .panel {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      overflow: hidden;
+    }
+
+    .panel-head {
+      padding: 10px 12px;
+      border-bottom: 1px solid var(--border);
+      color: var(--muted);
+      font-size: .68rem;
+      text-transform: uppercase;
+      letter-spacing: .12em;
+    }
+
+    .panel-body { padding: 12px; }
+
+    #state-card {
+      border-radius: 12px;
+      border: 1px solid var(--border);
+      background: var(--surface-2);
+      padding: 20px 14px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 10px;
+    }
+
+    #state-icon { font-size: 3.2rem; line-height: 1; }
+    #state-label {
+      font-family: var(--font-head);
+      font-size: clamp(1.7rem, 6vw, 2.4rem);
+      letter-spacing: -.03em;
+    }
+    #state-sub { font-size: .75rem; color: var(--muted); text-transform: uppercase; letter-spacing: .1em; }
+
+    #conf-bar-wrap {
+      width: 100%;
+      background: #1e1e2a;
+      border-radius: 99px;
+      height: 6px;
+      overflow: hidden;
+      margin-top: 4px;
+    }
+    #conf-bar {
+      height: 100%;
+      width: 0%;
+      border-radius: 99px;
+      background: var(--accent);
+      transition: width .3s ease;
+    }
+
+    #conf-label { width: 100%; text-align: right; color: var(--muted); font-size: .7rem; }
+
+    #sensor-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 8px;
+      margin-bottom: 10px;
+    }
+
+    .sensor-box {
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 8px;
+      text-align: center;
+    }
+    .sensor-box .axis { font-size: .6rem; color: var(--muted); text-transform: uppercase; }
+    .sensor-box .val { font-size: .95rem; margin-top: 2px; }
+
+    .btn-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+      margin-bottom: 10px;
+    }
+
+    button {
+      border: 1px solid var(--accent);
+      background: transparent;
+      color: var(--accent);
+      font-family: var(--font-head);
+      border-radius: 10px;
+      padding: 10px;
+      font-size: .95rem;
+      cursor: pointer;
+    }
+    button:disabled { opacity: .55; cursor: not-allowed; }
+    button.primary { background: var(--accent); color: #000; }
+    button.danger { border-color: var(--warn); color: var(--warn); }
+    button.danger:hover { background: rgba(255,107,53,.12); }
+
+    #sos-btn {
+      touch-action: none;
+      user-select: none;
+      -webkit-user-select: none;
+      -webkit-touch-callout: none;
+      position: relative;
+      overflow: hidden;
+      -webkit-tap-highlight-color: transparent;
+      -webkit-appearance: none;
+      appearance: none;
+    }
+
+    #sos-btn::after {
+      content: "";
+      position: absolute;
+      left: 0;
+      bottom: 0;
+      height: 3px;
+      width: var(--sos-hold-progress, 0%);
+      background: var(--warn);
+      opacity: .85;
+      transition: width .08s linear;
+    }
+
+    #sos-btn:active,
+    #sos-btn:focus {
+      outline: none;
+      background: rgba(255,107,53,.1);
+    }
+
+    #sos-pending {
+      border: 1px solid rgba(255,107,53,.5);
+      background: rgba(255,107,53,.15);
+      border-radius: 10px;
+      color: #ffd8ca;
+      padding: 10px;
+      font-size: .8rem;
+      display: none;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      margin-bottom: 10px;
+    }
+
+    #sos-cancel-btn {
+      border-color: var(--warn);
+      color: #fff;
+      background: rgba(255,107,53,.2);
+      padding: 8px 10px;
+      font-size: .8rem;
+      border-radius: 8px;
+    }
+
+    #obs-alert {
+      border: 1px solid rgba(255,107,53,.35);
+      background: rgba(255,107,53,.12);
+      border-radius: 10px;
+      color: #ffc3ac;
+      padding: 10px;
+      font-size: .8rem;
+      min-height: 42px;
+      display: flex;
+      align-items: center;
+    }
+
+    #camera-preview-wrap {
+      margin-top: 10px;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      background: var(--surface-2);
+      overflow: hidden;
+      min-height: 180px;
+    }
+
+    #camera-preview {
+      width: 100%;
+      height: 220px;
+      object-fit: cover;
+      display: none;
+      background: #000;
+    }
+
+    #camera-preview-empty {
+      color: var(--muted);
+      font-size: .75rem;
+      padding: 12px;
+      text-align: center;
+      text-transform: uppercase;
+      letter-spacing: .08em;
+    }
+
+    #connection-setup {
+      margin-top: 10px;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      background: var(--surface-2);
+      padding: 10px;
+    }
+
+    #connection-setup h3 {
+      font-size: .72rem;
+      color: var(--accent);
+      text-transform: uppercase;
+      letter-spacing: .1em;
+      margin-bottom: 8px;
+    }
+
+    .setup-row {
+      display: grid;
+      grid-template-columns: 1fr auto;
+      gap: 8px;
+      margin-bottom: 8px;
+      align-items: center;
+    }
+
+    .setup-value {
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 8px;
+      font-size: .67rem;
+      color: var(--text);
+      word-break: break-all;
+      background: #10101a;
+      min-height: 36px;
+      display: flex;
+      align-items: center;
+    }
+
+    .setup-copy-btn {
+      padding: 7px 10px;
+      font-size: .72rem;
+      border-radius: 8px;
+      min-width: 66px;
+      line-height: 1;
+    }
+
+    .setup-help {
+      font-size: .66rem;
+      color: var(--muted);
+      line-height: 1.45;
+      margin-top: 2px;
+    }
+
+    #connection-status {
+      margin-top: 8px;
+      font-size: .68rem;
+      color: var(--muted);
+      line-height: 1.5;
+    }
+
+
+    .nav-controls {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 8px;
+      margin-bottom: 10px;
+    }
+
+    input {
+      width: 100%;
+      border: 1px solid var(--border);
+      background: var(--surface-2);
+      color: var(--text);
+      border-radius: 10px;
+      padding: 10px 12px;
+      font-family: var(--font-mono);
+      outline: none;
+    }
+    input:focus { border-color: var(--accent); }
+
+    #map {
+      height: 320px;
+      width: 100%;
+      border-radius: 12px;
+      border: 1px solid var(--border);
+      overflow: hidden;
+      margin-bottom: 10px;
+      background: var(--surface-2);
+    }
+    #map .map-api-missing {
+      padding: 16px;
+      color: var(--muted);
+      font-size: 0.8rem;
+      line-height: 1.55;
+      max-width: 420px;
+    }
+    #map .map-api-missing code { color: var(--accent); font-size: 0.78rem; }
+
+    .route-meta {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+      margin-bottom: 10px;
+    }
+    .meta-box {
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 8px;
+      text-align: center;
+    }
+    .meta-box .k { color: var(--muted); font-size: .62rem; text-transform: uppercase; }
+    .meta-box .v { font-size: 1rem; margin-top: 3px; color: var(--accent); }
+
+    #nav-now {
+      background: rgba(0,229,255,.1);
+      border: 1px solid rgba(0,229,255,.45);
+      border-radius: 12px;
+      padding: 14px 12px;
+      color: #e8fcff;
+      font-size: clamp(.92rem, 2.4vw, 1.02rem);
+      line-height: 1.58;
+      margin-bottom: 10px;
+      min-height: 72px;
+    }
+    #next-step {
+      max-height: none;
+    }
+    #nav-now .nav-label {
+      font-size: .62rem;
+      letter-spacing: .14em;
+      text-transform: uppercase;
+      color: var(--accent);
+      margin-bottom: 6px;
+    }
+    #nav-distance {
+      font-size: .74rem;
+      color: var(--muted);
+      margin-top: 10px;
+      line-height: 1.4;
+    }
+
+    #nav-then {
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 10px 12px;
+      color: #d8d8ea;
+      font-size: clamp(.82rem, 2.2vw, .92rem);
+      line-height: 1.5;
+      margin-bottom: 10px;
+      min-height: 48px;
+    }
+    #nav-then .nav-label {
+      font-size: .58rem;
+      letter-spacing: .12em;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-bottom: 4px;
+    }
+
+    #route-steps-details {
+      margin-bottom: 6px;
+    }
+    #route-steps-details summary {
+      cursor: pointer;
+      color: var(--muted);
+      font-size: .72rem;
+      text-transform: uppercase;
+      letter-spacing: .1em;
+      padding: 6px 0;
+      list-style: none;
+    }
+    #route-steps-details summary::-webkit-details-marker { display: none; }
+
+    .route-voice-controls {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+      margin: 8px 0 10px;
+    }
+
+    .route-voice-controls button {
+      font-size: 0.82rem;
+      padding: 9px;
+    }
+
+    #steps {
+      max-height: 160px;
+      overflow: auto;
+      display: grid;
+      gap: 6px;
+    }
+    .step {
+      border: 1px solid var(--border);
+      background: var(--surface-2);
+      border-radius: 8px;
+      padding: 10px;
+      font-size: .74rem;
+      line-height: 1.5;
+    }
+    .step .step-num {
+      color: var(--accent);
+      font-weight: 700;
+      margin-right: 4px;
+    }
+
+    #log {
+      margin-top: 10px;
+      background: var(--surface-2);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 10px;
+      max-height: 140px;
+      overflow-y: auto;
+      color: #8f8faf;
+      font-size: .73rem;
+      line-height: 1.6;
+    }
+    .log-ok { color: var(--ok); }
+    .log-warn { color: var(--warn); }
+    .log-info { color: var(--accent); }
+
+    @media (min-width: 960px) {
+      .grid { grid-template-columns: 380px 1fr; align-items: start; }
+      #map { height: 420px; }
+      .nav-controls { grid-template-columns: 1fr 1fr 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <div class="top">
+      <div class="title">
+        <h1>🦯 Blind Navigation Assist</h1>
+        <p>Movement + Obstacle + Navigation in One Screen</p>
+      </div>
+      <div style="display:flex; gap:8px; align-items:center;">
+        <div id="status-pill">● Sensor Offline</div>
+        <div id="camera-pill">📷 Camera Off</div>
+      </div>
+    </div>
+
+    <div class="grid">
+      <section class="panel">
+        <div class="panel-head">Movement & Obstacle</div>
+        <div class="panel-body">
+          <div id="state-card">
+            <div id="state-icon">⏳</div>
+            <div id="state-label" style="color:var(--muted)">WAITING</div>
+            <div id="state-sub">Press Start Sensor</div>
+            <div id="conf-bar-wrap"><div id="conf-bar"></div></div>
+            <div id="conf-label">Signal: —</div>
+          </div>
+
+          <div id="sensor-grid">
+            <div class="sensor-box"><div class="axis">Accel X</div><div class="val" id="ax">—</div></div>
+            <div class="sensor-box"><div class="axis">Accel Y</div><div class="val" id="ay">—</div></div>
+            <div class="sensor-box"><div class="axis">Accel Z</div><div class="val" id="az">—</div></div>
+          </div>
+
+          <div class="btn-row">
+            <button id="start-btn" onclick="startSensor()">▶ Start Sensor</button>
+            <button class="primary" onclick="requestLiveLocation({ recenter: true, forceRefresh: true })">📍 Use My Location</button>
+          </div>
+
+          <button id="sos-btn" class="danger" style="width:100%; margin-bottom:10px;">🚨 Hold 3s for SOS</button>
+          <div id="sos-pending">
+            <span id="sos-pending-text">SOS in progress...</span>
+            <button id="sos-cancel-btn" onclick="cancelPendingSOS()">Cancel SOS</button>
+          </div>
+
+          <div id="obs-alert">No obstacle alert yet.</div>
+
+          <div id="camera-preview-wrap">
+            <video id="camera-preview" autoplay muted playsinline></video>
+            <div id="camera-preview-empty">Camera preview will appear here after Start Sensor</div>
+          </div>
+
+          <div id="log">Waiting for sensor start...</div>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-head">Navigation — Google Maps</div>
+        <div class="panel-body">
+          <div style="margin-bottom: 12px; padding: 10px; background: var(--surface-2); border-radius: 6px; font-size: 0.85rem;">
+            <details style="cursor: pointer;">
+              <summary style="color: var(--accent); font-weight: bold;">📍 Manual Location (No GPS?)</summary>
+              <div style="margin-top: 10px; display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+                <input id="manual-lat" type="number" placeholder="Latitude (e.g., 11.0)" step="0.0001" style="font-size: 0.8rem; padding: 6px;"/>
+                <input id="manual-lon" type="number" placeholder="Longitude (e.g., 76.9)" step="0.0001" style="font-size: 0.8rem; padding: 6px;"/>
+                <button onclick="setManualLocation()" style="grid-column: 1/-1; font-size: 0.8rem; padding: 6px; background: var(--accent); color: #000;">Set Location</button>
+              </div>
+              <div style="margin-top: 8px; border-top: 1px solid var(--border); padding-top: 8px;">
+                <div style="font-size: 0.75rem; color: var(--muted); margin-bottom: 6px;">Quick Demo: Tap a city</div>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 6px;">
+                  <button onclick="setDemoLocation(11.398, 76.9760, 'Erode')" style="font-size: 0.75rem; padding: 4px; background: rgba(0,255,136,0.2); border: 1px solid var(--accent); cursor: pointer;">📍 Erode</button>
+                  <button onclick="setDemoLocation(13.3673, 79.7597, 'Chennai')" style="font-size: 0.75rem; padding: 4px; background: rgba(0,255,136,0.2); border: 1px solid var(--accent); cursor: pointer;">📍 Chennai</button>
+                  <button onclick="setDemoLocation(11.0168, 76.8128, 'Coimbatore')" style="font-size: 0.75rem; padding: 4px; background: rgba(0,255,136,0.2); border: 1px solid var(--accent); cursor: pointer;">📍 Coimbatore</button>
+                  <button onclick="setDemoLocation(10.7905, 78.1047, 'Tiruppur')" style="font-size: 0.75rem; padding: 4px; background: rgba(0,255,136,0.2); border: 1px solid var(--accent); cursor: pointer;">📍 Tiruppur</button>
+                </div>
+              </div>
+            </details>
+          </div>
+          <div class="nav-controls">
+            <input id="destination" type="text" placeholder="Enter destination (e.g., Namakkal)" />
+            <button id="get-route-btn" onclick="buildRoute()">🧭 Get Route</button>
+            <button onclick="clearRoute()">✖ Clear Route</button>
+          </div>
+
+          <div id="auto-route-status" style="display: none; background: rgba(0, 255, 136, 0.15); border: 2px solid #00ff88; border-radius: 8px; padding: 12px; margin: 10px 0; text-align: center; color: #00ff88; font-weight: bold;">
+            ✅ Auto-calculating route...
+          </div>
+
+          <div id="map"></div>
+
+          <div class="route-meta">
+            <div class="meta-box"><div class="k">Distance</div><div class="v" id="route-distance">—</div></div>
+            <div class="meta-box"><div class="k">Duration</div><div class="v" id="route-duration">—</div></div>
+          </div>
+
+          <div id="nav-now">
+            <div class="nav-label">Now</div>
+            <div id="next-step">Waiting for a real GPS position…</div>
+            <div id="nav-distance"></div>
+          </div>
+          <div id="nav-then" style="display: none;">
+            <div class="nav-label">Next</div>
+            <div id="then-step-text">—</div>
+          </div>
+          <div class="route-voice-controls">
+            <button id="speak-full-route-btn" onclick="speakFullRouteInstructions(true)">🔊 Speak Full Route</button>
+            <button id="stop-full-route-btn" class="danger" onclick="stopFullRouteNarration()">⏹ Stop Voice</button>
+          </div>
+          <details id="route-steps-details">
+            <summary>Full route (all steps)</summary>
+            <div id="steps"></div>
+          </details>
+        </div>
+      </section>
+    </div>
+  </div>
+
+  <script>
+    const ENDPOINT = "/sensor";
+    const STATUS_ENDPOINT = "/status";
+    const CAMERA_FRAME_ENDPOINT = "/camera_frame";
+    const CAMERA_START_ENDPOINT = "/camera/start";
+    const SOS_ENDPOINT = "/sos";
+    const SOS_CONTACTS_ENDPOINT = "/sos/contacts";
+    const NETWORK_INFO_ENDPOINT = "/network-info";
+    const NAVIGATE_ENDPOINT = "/api/navigate";
+    const CURRENT_LOCATION_ENDPOINT = "/current_location";
+    const LOCATION_UPDATE_ENDPOINT = "/location";
+    const SOS_HOLD_MS = 3000;
+    const SOS_CANCEL_WINDOW_MS = 8000;
+    const WINDOW_SIZE = 128;
+    const SEND_INTERVAL_MS = 2500;
+
+    let buffer = [];
+    let sensing = false;
+    let sendTimer = null;
+
+    let map;
+    let userMarker = null;
+    let destMarker = null;
+    let routeLine = null;
+    let routeSteps = [];
+    let routePolylineLatLngs = [];
+    let stepEndMeters = [];
+    let currentStepIndex = 0;
+    let userLocation = null;
+    let locationWatchId = null;
+    /**
+     * Time of last *trusted* fix (accuracy within MAX_TRUSTED_ACCURACY_M). Used for route cache / reuse.
+     * Coarse Wi‑Fi or IP “city” fixes do not advance this — avoids locking to e.g. Chennai when GPS is off.
+     */
+    let lastLocationFixAt = 0;
+    /** Last reading’s accuracy in metres (lower is better). */
+    let lastLocationAccuracyM = Infinity;
+    let _coarseLocationHintLogged = false;
+    let _rejectAccuracyHintLogged = false;
+    /** Routing / “fast Get Route” only when accuracy is at least this good. */
+    const MAX_TRUSTED_ACCURACY_M = 4500;
+    /**
+     * Readings worse than this are not applied at all — browser often reports 100–400 km for IP/Wi‑Fi
+     * “country/city” guesses (e.g. Chennai) even when device GPS is on but the page is opened on PC.
+     */
+    const REJECT_ACCURACY_M = 30000;
+    /** When the API omits accuracy, assume this (metres): show a dot but do not trust for routing. */
+    const UNKNOWN_ACCURACY_ASSUMED_M = 5500;
+    /** Deduplicate concurrent getCurrentPosition (avoids double fixes / double logs). */
+    let _geolocationSingleFlight = null;
+    let _lastLocationLogKey = "";
+    let _lastLocationLogAt = 0;
+    let _lastLocationPostAt = 0;
+    let _lastPostedLocationKey = "";
+    let routeBuildInProgress = false;
+    /** Last movement from /sensor — used to avoid step creep from GPS drift while idle */
+    let navMovementState = "WAITING";
+    let voiceEnabled = true;
+    let lastSpokenStepIndex = -1;
+    let routeNarrationActive = false;
+    let routeNarrationIndex = 0;
+    let routeNarrationTimer = null;
+    let eventSource = null;
+    let lastSpokenBackendText = "";
+    let lastSpokenBackendAt = 0;
+    let camStream = null;
+    let camVideo = null;
+    let camCanvas = null;
+    let camSendTimer = null;
+    let cameraUiLive = false;
+    let camUploadFailStreak = 0;
+    let lastCamUploadLogAt = 0;
+    let lastCameraStatusText = "";
+    let sosHoldTimer = null;
+    let sosHoldStartAt = 0;
+    let sosHoldProgressTimer = null;
+    let sosPendingTimer = null;
+    let sosCountdownTimer = null;
+    let sosPending = false;
+    let sosCancelSecondsLeft = 0;
+
+    // Compatibility shim: some stale/cached scripts call mgt.clearMarks().
+    // Keep a tiny bridge so it maps to clearRoute() instead of crashing.
+    window.mgt = window.mgt || {};
+    window.mgt.clearMarks = function() {
+      try {
+        if (typeof clearRoute === "function") clearRoute();
+      } catch (_) {
+        // no-op
+      }
+    };
+
+    const STATE_CONFIG = {
+      WALKING:  { icon: "🚶", color: "var(--ok)" },
+      STANDING: { icon: "🧍", color: "var(--accent)" },
+      SITTING:  { icon: "🪑", color: "var(--sit)" },
+      IDLE:     { icon: "💤", color: "var(--idle)" },
+      WAITING:  { icon: "⏳", color: "var(--muted)" },
+    };
+
+    function log(msg, type = "") {
+      const el = document.getElementById("log");
+      const div = document.createElement("div");
+      if (type) div.className = "log-" + type;
+      div.textContent = `[${new Date().toLocaleTimeString()}] ${msg}`;
+      el.appendChild(div);
+      el.scrollTop = el.scrollHeight;
+    }
+
+    function setConnectionField(id, value) {
+      const el = document.getElementById(id);
+      if (!el) return;
+      const safeValue = String(value || "").trim();
+      el.textContent = safeValue || "Unavailable";
+      el.dataset.copy = safeValue || "";
+    }
+
+    async function copyConnectionValue(id, label) {
+      const el = document.getElementById(id);
+      if (!el) return;
+      const text = (el.dataset.copy || el.textContent || "").trim();
+      if (!text || text === "Unavailable") {
+        log(label + " is not available yet", "warn");
+        return;
+      }
+
+      try {
+        if (navigator.clipboard && window.isSecureContext) {
+          await navigator.clipboard.writeText(text);
+        } else {
+          const temp = document.createElement("textarea");
+          temp.value = text;
+          temp.setAttribute("readonly", "");
+          temp.style.position = "fixed";
+          temp.style.opacity = "0";
+          document.body.appendChild(temp);
+          temp.select();
+          document.execCommand("copy");
+          document.body.removeChild(temp);
+        }
+        log(label + " copied", "ok");
+      } catch (_) {
+        log("Could not copy automatically. Please copy manually.", "warn");
+      }
+    }
+
+    function inspectConnectionMode() {
+      const host = window.location.hostname || "";
+      const isLoopbackHost = host === "127.0.0.1" || host === "localhost";
+      const isPhoneLikeUa = /android|iphone|ipad|ipod/i.test(navigator.userAgent || "");
+
+      if (isLoopbackHost && !isPhoneLikeUa) {
+        log("You are viewing localhost on this device. For phone camera detection, open this app URL on your phone.", "warn");
+      }
+    }
+
+    async function showNetworkHints() {
+      const statusEl = document.getElementById("connection-status");
+      const currentOrigin = window.location.origin + "/movements";
+      setConnectionField("setup-laptop-url", currentOrigin);
+      setConnectionField("setup-phone-url", "Waiting for LAN URL from backend...");
+      setConnectionField("setup-usb-cmd", "adb reverse tcp:5000 tcp:5000");
+
+      try {
+        const resp = await fetch(NETWORK_INFO_ENDPOINT, { cache: "no-store" });
+        if (!resp.ok) {
+          if (statusEl) statusEl.textContent = "Could not fetch network hints from backend.";
+          return;
+        }
+        const data = await resp.json();
+
+        if (data.localhost_url) {
+          setConnectionField("setup-laptop-url", data.localhost_url);
+        }
+
+        if (Array.isArray(data.lan_urls) && data.lan_urls.length > 0) {
+          setConnectionField("setup-phone-url", data.lan_urls[0]);
+          log("Open this on phone (same Wi-Fi): " + data.lan_urls[0], "info");
+        } else {
+          setConnectionField("setup-phone-url", "LAN URL unavailable. Check Wi-Fi and run ipconfig on PC.");
+        }
+
+        if (data.usb_adb_reverse_command && data.usb_phone_url) {
+          setConnectionField("setup-usb-cmd", data.usb_adb_reverse_command + " ; open " + data.usb_phone_url);
+          log("USB mode: run '" + data.usb_adb_reverse_command + "' then open " + data.usb_phone_url, "info");
+        }
+
+        if (statusEl) {
+          statusEl.textContent = "Use Phone URL for Wi-Fi mode, or USB command when Wi-Fi is not available.";
+        }
+      } catch (_) {
+        if (statusEl) {
+          statusEl.textContent = "Backend network hints unavailable. You can still use current URL on same device.";
+        }
+      }
+    }
+
+    function speakBackendText(text, urgent = false) {
+      if (!voiceEnabled || !text || !("speechSynthesis" in window)) return;
+      if (routeNarrationActive && !urgent) return;
+      const now = Date.now();
+      if (!urgent && text === lastSpokenBackendText && (now - lastSpokenBackendAt) < 2500) return;
+      const utterance = new SpeechSynthesisUtterance(text);
+      utterance.lang = "en-IN";
+      utterance.rate = urgent ? 1.0 : 0.95;
+      utterance.pitch = urgent ? 1.1 : 1.0;
+      window.speechSynthesis.cancel();
+      window.speechSynthesis.speak(utterance);
+      lastSpokenBackendText = text;
+      lastSpokenBackendAt = now;
+    }
+
+    function stopFullRouteNarration() {
+      routeNarrationActive = false;
+      routeNarrationIndex = 0;
+      if (routeNarrationTimer) {
+        clearTimeout(routeNarrationTimer);
+        routeNarrationTimer = null;
+      }
+      if ("speechSynthesis" in window) {
+        window.speechSynthesis.cancel();
+      }
+    }
+
+    function speakFullRouteInstructions(restart = true) {
+      if (!voiceEnabled || !routeSteps.length || !("speechSynthesis" in window)) {
+        if (!routeSteps.length) {
+          log("Route steps not ready yet.", "warn");
+        }
+        return;
+      }
+
+      if (restart) {
+        stopFullRouteNarration();
+      }
+
+      routeNarrationActive = true;
+
+      const speakNext = () => {
+        if (!routeNarrationActive) return;
+        if (routeNarrationIndex >= routeSteps.length) {
+          routeNarrationActive = false;
+          routeNarrationIndex = 0;
+          return;
+        }
+
+        const step = routeSteps[routeNarrationIndex];
+        const line = (step && (step.blindText || step.text)) ? (step.blindText || step.text) : "Continue";
+        const utterance = new SpeechSynthesisUtterance(`Step ${routeNarrationIndex + 1}. ${line}`);
+        utterance.lang = "en-IN";
+        utterance.rate = 0.9;
+        utterance.pitch = 1;
+        utterance.onend = () => {
+          routeNarrationIndex += 1;
+          routeNarrationTimer = setTimeout(speakNext, 320);
+        };
+        utterance.onerror = () => {
+          routeNarrationIndex += 1;
+          routeNarrationTimer = setTimeout(speakNext, 320);
+        };
+        window.speechSynthesis.speak(utterance);
+      };
+
+      speakNext();
+    }
+
+    function connectEventStream() {
+      if (eventSource) return;
+      eventSource = new EventSource("/events");
+
+      eventSource.addEventListener("speak", (e) => {
+        try {
+          const data = JSON.parse(e.data || "{}");
+          if (data.text) speakBackendText(data.text, false);
+        } catch (_) {}
+      });
+
+      eventSource.addEventListener("speak_urgent", (e) => {
+        try {
+          const data = JSON.parse(e.data || "{}");
+          if (data.text) speakBackendText(data.text, true);
+        } catch (_) {}
+      });
+
+      eventSource.onerror = () => {
+        if (eventSource) {
+          eventSource.close();
+          eventSource = null;
+        }
+        setTimeout(connectEventStream, 2500);
+      };
+    }
+
+    async function sendCameraFrame() {
+      if (!camVideo || !camCanvas) return;
+      if (camVideo.readyState < 2) return;
+
+      const width = camVideo.videoWidth || 640;
+      const height = camVideo.videoHeight || 480;
+      camCanvas.width = width;
+      camCanvas.height = height;
+      const ctx = camCanvas.getContext("2d", { alpha: false });
+      ctx.drawImage(camVideo, 0, 0, width, height);
+
+      const blob = await new Promise((resolve) => camCanvas.toBlob(resolve, "image/jpeg", 0.65));
+      if (!blob) return;
+
+      let timeoutId = null;
+      try {
+        const controller = new AbortController();
+        timeoutId = setTimeout(() => controller.abort(), 8000);
+        
+        const resp = await fetch(CAMERA_FRAME_ENDPOINT, {
+          method: "POST",
+          headers: { "Content-Type": "image/jpeg" },
+          body: blob,
+          signal: controller.signal
+        });
+        clearTimeout(timeoutId);
+        
+        if (!resp.ok) throw new Error("HTTP " + resp.status);
+        camUploadFailStreak = 0;
+      } catch (err) {
+        if (timeoutId) clearTimeout(timeoutId);
+        if (err.name === "AbortError") {
+          camUploadFailStreak += 1;
+          return;
+        }
+        camUploadFailStreak += 1;
+        const now = Date.now();
+        if (camUploadFailStreak >= 3 && (now - lastCamUploadLogAt) > 5000) {
+          setCameraPill("err", "📷 Upload Failed");
+          log("Camera upload: " + (err?.message || "network error"), "warn");
+          lastCamUploadLogAt = now;
+        }
+      }
+    }
+
+    async function startCameraStreaming() {
+      if (camStream) return true;
+      if (!navigator.mediaDevices?.getUserMedia) {
+        log("Camera API not supported on this device", "warn");
+        return false;
+      }
+
+      try {
+        log("Requesting camera permission...", "info");
+        
+        // Try multiple camera configurations
+        let stream = null;
+        
+        // Try 1: Back camera with specific constraints
+        try {
+          stream = await navigator.mediaDevices.getUserMedia({
+            video: {
+              facingMode: "environment",
+              width: { ideal: 640 },
+              height: { ideal: 480 }
+            },
+            audio: false
+          });
+        } catch (e1) {
+          console.log("Back camera failed, trying any camera:", e1);
+          
+          // Try 2: Any camera
+          try {
+            stream = await navigator.mediaDevices.getUserMedia({
+              video: true,
+              audio: false
+            });
+          } catch (e2) {
+            console.log("Any camera failed:", e2);
+            throw e2;
+          }
+        }
+        
+        if (!stream) {
+          throw new Error("No camera stream obtained");
+        }
+
+        camStream = stream;
+        camVideo = document.createElement("video");
+        camVideo.playsInline = true;
+        camVideo.muted = true;
+        camVideo.autoplay = true;
+        camVideo.style.display = "none";
+        camVideo.srcObject = camStream;
+        document.body.appendChild(camVideo);
+
+        const preview = document.getElementById("camera-preview");
+        preview.srcObject = camStream;
+
+        camCanvas = document.createElement("canvas");
+        camCanvas.style.display = "none";
+        document.body.appendChild(camCanvas);
+
+        // Wait for video to be ready
+        await new Promise((resolve, reject) => {
+          camVideo.onloadedmetadata = () => {
+            camVideo.play()
+              .then(() => {
+                preview.play().catch(() => {});
+                resolve();
+              })
+              .catch(reject);
+          };
+          
+          // Timeout after 5 seconds
+          setTimeout(() => reject(new Error("Video load timeout")), 5000);
+        });
+        
+        if (!camSendTimer) {
+          camSendTimer = setInterval(sendCameraFrame, 350);
+        }
+        camUploadFailStreak = 0;
+        updateCameraPreviewState(true);
+        log("Camera streaming active ✓", "ok");
+        return true;
+        
+      } catch (err) {
+        console.error("Camera error:", err);
+        updateCameraPreviewState(false);
+        setCameraPill("err", "📷 Camera Error");
+        
+        let errorMsg = "Camera error: ";
+        if (err.name === "NotAllowedError" || err.name === "PermissionDeniedError") {
+          errorMsg = "Camera permission denied. Please allow camera in browser settings.";
+        } else if (err.name === "NotFoundError" || err.name === "DevicesNotFoundError") {
+          errorMsg = "No camera found on this device.";
+        } else if (err.name === "NotReadableError") {
+          errorMsg = "Camera is being used by another app. Please close it.";
+        } else if (err.name === "SecurityError") {
+          errorMsg = "HTTPS connection required for camera access.";
+        } else {
+          errorMsg += err.message || "Unknown error";
+        }
+        
+        log(errorMsg, "warn");
+        return false;
+      }
+    }
+
+    async function startBackendCameraDetection() {
+      try {
+        setCameraPill("", "📷 Starting...");
+        const resp = await fetch(CAMERA_START_ENDPOINT, { method: "POST" });
+        if (!resp.ok) throw new Error("HTTP " + resp.status);
+        log("Obstacle detection started", "ok");
+        return true;
+      } catch (err) {
+        setCameraPill("err", "📷 Camera Error");
+        log("Camera start failed: " + err.message, "warn");
+        return false;
+      }
+    }
+
+    function stopCameraStreaming() {
+      if (!camStream) return;
+      
+      if (camSendTimer) {
+        clearInterval(camSendTimer);
+        camSendTimer = null;
+      }
+      
+      if (camStream) {
+        camStream.getTracks().forEach(track => track.stop());
+        camStream = null;
+      }
+      
+      if (camVideo) {
+        camVideo.srcObject = null;
+        camVideo.remove();
+        camVideo = null;
+      }
+      
+      if (camCanvas) {
+        camCanvas.remove();
+        camCanvas = null;
+      }
+      
+      const preview = document.getElementById("camera-preview");
+      if (preview) {
+        preview.srcObject = null;
+      }
+      
+      updateCameraPreviewState(false);
+      log("Camera streaming stopped", "ok");
+    }
+
+    function setPill(mode) {
+      const p = document.getElementById("status-pill");
+      p.classList.remove("live", "err");
+      if (mode === "live" || mode === "err") p.classList.add(mode);
+      p.textContent = mode === "live" ? "● Sensor Live" : "● Server Error";
+    }
+
+    function setCameraPill(mode, text) {
+      const p = document.getElementById("camera-pill");
+      p.classList.remove("live", "err");
+      if (mode === "live" || mode === "err") p.classList.add(mode);
+      p.textContent = text;
+    }
+
+    function updateCameraPreviewState(isLive) {
+      const videoEl = document.getElementById("camera-preview");
+      const emptyEl = document.getElementById("camera-preview-empty");
+      cameraUiLive = !!isLive;
+      if (cameraUiLive) {
+        videoEl.style.display = "block";
+        emptyEl.style.display = "none";
+        setCameraPill("live", "📷 Camera On");
+      } else {
+        videoEl.style.display = "none";
+        emptyEl.style.display = "block";
+        setCameraPill("", "📷 Camera Off");
+      }
+    }
+
+    function updateState(state, magStd, peaks) {
+      const cfg = STATE_CONFIG[state] || STATE_CONFIG.WAITING;
+      document.getElementById("state-icon").textContent = cfg.icon;
+      const label = document.getElementById("state-label");
+      label.textContent = state;
+      label.style.color = cfg.color;
+
+      const pct = Math.min(100, Math.round(((magStd ?? 0) / 2.0) * 100));
+      document.getElementById("conf-bar").style.width = pct + "%";
+      document.getElementById("conf-bar").style.background = cfg.color;
+      document.getElementById("conf-label").textContent = `std: ${magStd ?? "—"} | peaks: ${peaks ?? "—"}`;
+
+      const sub = document.getElementById("state-sub");
+      sub.textContent = state === "WALKING" ? "Rhythmic motion detected"
+        : state === "STANDING" ? "Low motion detected"
+        : state === "SITTING" ? "Minimal motion"
+        : state === "IDLE" ? "No significant movement"
+        : "Waiting for data";
+    }
+
+    function updateObstacleAlert(text, urgency, opts = {}) {
+      const alertEl = document.getElementById("obs-alert");
+      const cameraActive = !!opts.cameraActive;
+      const sensorActive = !!opts.sensorActive;
+      if (!text) {
+        if (!cameraActive) {
+          alertEl.style.borderColor = "rgba(255,149,0,.45)";
+          alertEl.style.background = "rgba(255,149,0,.12)";
+          alertEl.style.color = "#ffd9a8";
+          alertEl.textContent = "Camera off. Obstacle detection is not active.";
+        } else if (!sensorActive) {
+          alertEl.style.borderColor = "rgba(0,229,255,.35)";
+          alertEl.style.background = "rgba(0,229,255,.08)";
+          alertEl.style.color = "#b8f7ff";
+          alertEl.textContent = "Start sensor for reliable obstacle alerts.";
+        } else {
+          alertEl.style.borderColor = "rgba(57,255,20,.35)";
+          alertEl.style.background = "rgba(57,255,20,.08)";
+          alertEl.style.color = "#b7ffb4";
+          alertEl.textContent = "No confirmed obstacle right now.";
+        }
+        return;
+      }
+
+      if (urgency >= 3) {
+        alertEl.style.borderColor = "rgba(255,45,85,.5)";
+        alertEl.style.background = "rgba(255,45,85,.14)";
+        alertEl.style.color = "#ffc1cf";
+      } else if (urgency >= 2) {
+        alertEl.style.borderColor = "rgba(255,149,0,.5)";
+        alertEl.style.background = "rgba(255,149,0,.14)";
+        alertEl.style.color = "#ffd9a8";
+      } else {
+        alertEl.style.borderColor = "rgba(0,229,255,.35)";
+        alertEl.style.background = "rgba(0,229,255,.08)";
+        alertEl.style.color = "#b8f7ff";
+      }
+      alertEl.textContent = text;
+    }
+
+    async function sendToServer() {
+      if (buffer.length < WINDOW_SIZE) {
+        log(`Buffering ${buffer.length}/${WINDOW_SIZE} samples`, "info");
+        return;
+      }
+
+      const payload = buffer.slice(-WINDOW_SIZE);
+
+      try {
+        const resp = await fetch(ENDPOINT, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ data: payload })
+        });
+
+        if (!resp.ok) throw new Error("HTTP " + resp.status);
+
+        const json = await resp.json();
+        const mv = json.movement || "WAITING";
+        navMovementState = mv;
+        updateState(mv, json.mag_std, json.peaks);
+        updateObstacleAlert(json.last_obstacle, json.last_urgency || 0, {
+          cameraActive: !!json.camera_active,
+          sensorActive: sensing
+        });
+        setPill("live");
+      } catch (err) {
+        log("Server error: " + err.message, "warn");
+        setPill("err");
+      }
+    }
+
+    async function pollStatus() {
+      try {
+        const resp = await fetch(STATUS_ENDPOINT);
+        if (!resp.ok) return;
+        const json = await resp.json();
+        updateObstacleAlert(json.last_obstacle, json.last_urgency || 0, {
+          cameraActive: !!json.camera_active,
+          sensorActive: sensing
+        });
+        
+        // Update camera pill based on camera state
+        if (json.camera_active && cameraUiLive) {
+          setCameraPill("live", "📷 Camera On");
+          lastCameraStatusText = "📷 Camera On";
+        } else if (!json.camera_active && !cameraUiLive) {
+          setCameraPill("", "📷 Camera Off");
+          lastCameraStatusText = "📷 Camera Off";
+        }
+      } catch (_) {}
+    }
+
+    function collectSample(event) {
+      const a = event.accelerationIncludingGravity;
+      if (!a) return;
+
+      const x = a.x ?? 0;
+      const y = a.y ?? 0;
+      const z = a.z ?? 0;
+
+      buffer.push([x, y, z]);
+      if (buffer.length > WINDOW_SIZE * 4) buffer.shift();
+
+      document.getElementById("ax").textContent = x.toFixed(2);
+      document.getElementById("ay").textContent = y.toFixed(2);
+      document.getElementById("az").textContent = z.toFixed(2);
+    }
+
+    async function startSensor() {
+      if (sensing) return;
+
+      if (typeof DeviceMotionEvent !== "undefined" && typeof DeviceMotionEvent.requestPermission === "function") {
+        try {
+          const perm = await DeviceMotionEvent.requestPermission();
+          if (perm !== "granted") {
+            log("Motion permission denied", "warn");
+            return;
+          }
+        } catch (e) {
+          log("Permission error: " + e, "warn");
+          return;
+        }
+      } else if (typeof DeviceMotionEvent === "undefined") {
+        log("DeviceMotion not supported. Open this on phone.", "warn");
+        return;
+      }
+
+      sensing = true;
+      const btn = document.getElementById("start-btn");
+      btn.textContent = "⏹ Sensing…";
+      btn.disabled = true;
+
+      window.addEventListener("devicemotion", collectSample);
+      sendTimer = setInterval(sendToServer, SEND_INTERVAL_MS);
+      connectEventStream();
+      
+      // Start camera immediately
+      const cameraStarted = await startCameraStreaming();
+      if (cameraStarted) {
+        log("Sensor and camera started", "ok");
+      } else {
+        log("Sensor started (camera failed)", "warn");
+      }
+      setPill("live");
+    }
+
+    function initMap() {
+      const el = document.getElementById("map");
+      if (!el || typeof google === "undefined" || !google.maps) return;
+      map = new google.maps.Map(el, {
+        center: { lat: 11.0, lng: 78.0 },
+        zoom: 8,
+        mapTypeControl: true,
+        streetViewControl: false,
+        fullscreenControl: true,
+        mapTypeControlOptions: { style: google.maps.MapTypeControlStyle.DROPDOWN_MENU }
+      });
+      if (userLocation && userLocation.length === 2) {
+        setUserMarker(userLocation[0], userLocation[1]);
+      }
+    }
+
+    function setUserMarker(lat, lon) {
+      if (!map || typeof google === "undefined" || !google.maps) return;
+      const pos = { lat, lng: lon };
+      if (!userMarker) {
+        userMarker = new google.maps.Marker({
+          position: pos,
+          map,
+          title: "Your Location",
+          icon: {
+            path: google.maps.SymbolPath.CIRCLE,
+            scale: 10,
+            fillColor: "#00e5ff",
+            fillOpacity: 1,
+            strokeColor: "#0a0a0f",
+            strokeWeight: 2
+          }
+        });
+      } else {
+        userMarker.setPosition(pos);
+      }
+    }
+
+    function fitMapToRoutePath(latlngs) {
+      if (!map || !latlngs || latlngs.length < 2 || typeof google === "undefined" || !google.maps) return;
+      const bounds = new google.maps.LatLngBounds();
+      latlngs.forEach((ll) => bounds.extend({ lat: ll[0], lng: ll[1] }));
+      map.fitBounds(bounds, 48);
+    }
+
+    function setManualLocation() {
+      const latEl = document.getElementById("manual-lat");
+      const lonEl = document.getElementById("manual-lon");
+      const lat = parseFloat(latEl.value);
+      const lon = parseFloat(lonEl.value);
+
+      if (!Number.isFinite(lat) || !Number.isFinite(lon)) {
+        log("Invalid latitude or longitude.", "warn");
+        return;
+      }
+
+      userLocation = [lat, lon];
+      lastLocationFixAt = Date.now();
+      lastLocationAccuracyM = 50;
+
+      setUserMarker(lat, lon);
+      if (map) map.setCenter({ lat: lat, lng: lon });
+
+      log(`Manual location set: ${lat.toFixed(4)}, ${lon.toFixed(4)}`, "ok");
+      speakBackendText("Location set manually", false);
+      
+      // Send to backend
+      fetch("/location", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ lat: lat, lon: lon })
+      }).catch(err => console.warn("Location save warning:", err));
+    }
+
+    function setDemoLocation(lat, lon, cityName) {
+      document.getElementById("manual-lat").value = lat;
+      document.getElementById("manual-lon").value = lon;
+      setManualLocation();
+      log(`Demo location set: ${cityName}`, "ok");
+      
+      // If destination from URL exists, auto-build route now
+      const urlParams = new URLSearchParams(window.location.search);
+      const urlDestination = urlParams.get('dest');
+      if (urlDestination) {
+        setTimeout(() => {
+          log(`Auto-building route after location set...`, "info");
+          buildRoute();
+        }, 500);
+      }
+    }
+
+    function loadGoogleMapsAndBoot() {
+      const meta = document.querySelector('meta[name="google-maps-api-key"]');
+      const key = (meta && meta.getAttribute("content") || "").trim();
+      const mapEl = document.getElementById("map");
+      if (!key || key === "YOUR_GOOGLE_MAPS_API_KEY") {
+        if (mapEl) {
+          mapEl.innerHTML =
+            '<div class="map-api-missing">Add your key to the <code>&lt;meta name=&quot;google-maps-api-key&quot; content=&quot;…&quot;&gt;</code> tag. Enable <strong>Maps JavaScript API</strong> for that key, then reload.</div>';
+        }
+        map = null;
+        log("Google Maps: set meta google-maps-api-key to your API key.", "warn");
+        bootApp();
+        return;
+      }
+      window.__blindNavMapsReady = function () {
+        try {
+          initMap();
+        } catch (err) {
+          console.error(err);
+          log("Google Maps failed to initialize: " + (err && err.message ? err.message : err), "warn");
+        }
+        bootApp();
+      };
+      const script = document.createElement("script");
+      script.src =
+        "https://maps.googleapis.com/maps/api/js?key=" +
+        encodeURIComponent(key) +
+        "&callback=__blindNavMapsReady";
+      script.async = true;
+      script.defer = true;
+      script.onerror = function () {
+        if (mapEl) {
+          mapEl.innerHTML =
+            '<div class="map-api-missing">Could not load Google Maps (network or invalid key). Check the browser console.</div>';
+        }
+        log("Google Maps script failed to load.", "warn");
+        bootApp();
+      };
+      document.head.appendChild(script);
+    }
+
+    function normManeuverMod(mod) {
+      return String(mod || "")
+        .toLowerCase()
+        .replace(/_/g, " ")
+        .trim();
+    }
+
+    function prettifyRoadName(name) {
+      if (!name || typeof name !== "string") return "";
+      const t = name.trim();
+      if (t.length > 3 && t === t.toUpperCase() && /[A-Z]/.test(t)) {
+        return t
+          .toLowerCase()
+          .split(/\s+/)
+          .map((w) => (w.length ? w[0].toUpperCase() + w.slice(1) : w))
+          .join(" ");
+      }
+      return t;
+    }
+
+    /** Consistent step length: metres if &lt; 1 km, else km (matches Google Maps style). */
+    function formatDistanceForStep(meters) {
+      if (meters == null || !Number.isFinite(meters) || meters <= 0) return "";
+      const m = Math.round(meters);
+      if (m < 1000) return ` for ${m} m`;
+      const km = m / 1000;
+      const s = km < 10 ? km.toFixed(1).replace(/\.0$/, "") : String(Math.round(km));
+      return ` for ${s} km`;
+    }
+
+    function formatDistanceShort(meters) {
+      if (meters == null || !Number.isFinite(meters)) return "";
+      const m = Math.max(0, Math.round(meters));
+      if (m < 1000) return `${m} m`;
+      const km = m / 1000;
+      return (km < 10 ? km.toFixed(1).replace(/\.0$/, "") : String(Math.round(km))) + " km";
+    }
+
+    function bearingToHeadWord(deg) {
+      if (deg == null || !Number.isFinite(deg)) return "";
+      const d = ((deg % 360) + 360) % 360;
+      const dirs = ["north", "northeast", "east", "southeast", "south", "southwest", "west", "northwest"];
+      return dirs[Math.round(d / 45) % 8];
+    }
+
+    function modifierToTurnPhrase(mod) {
+      const m = normManeuverMod(mod);
+      const map = {
+        uturn: "Make a U-turn",
+        "sharp left": "Turn sharp left",
+        left: "Turn left",
+        "slight left": "Bear left",
+        straight: "Go straight",
+        "slight right": "Bear right",
+        right: "Turn right",
+        "sharp right": "Turn sharp right"
+      };
+      if (map[m]) return map[m];
+      if (!m) return "Continue";
+      return `Turn ${m}`;
+    }
+
+    /** OSRM RouteStep → short, speakable line (no raw types like "new name"). */
+    function formatStep(step) {
+      const maneuver = step.maneuver || {};
+      const type = String(maneuver.type || "continue").toLowerCase().replace(/_/g, " ");
+      const mod = normManeuverMod(maneuver.modifier);
+      const road = prettifyRoadName(step.name || "");
+      const dist = formatDistanceForStep(step.distance);
+      const onRoad = road ? ` on ${road}` : "";
+      const ontoRoad = road ? ` onto ${road}` : "";
+
+      if (type === "arrive") {
+        return road ? `Arrive at ${road}` : "You have arrived at your destination";
+      }
+
+      if (type === "depart") {
+        const head = bearingToHeadWord(maneuver.bearing_after);
+        if (road && head) return `Head ${head}${onRoad}`;
+        if (road) return `Start${onRoad}`;
+        return "Start your route";
+      }
+
+      if (type === "turn") {
+        const phrase = modifierToTurnPhrase(mod);
+        return `${phrase}${ontoRoad || onRoad}${dist}`.replace(/\s+/g, " ").trim();
+      }
+
+      if (type === "new name") {
+        if (mod && mod !== "straight") {
+          const phrase = modifierToTurnPhrase(mod);
+          return `${phrase}${ontoRoad}${dist}`.replace(/\s+/g, " ").trim();
+        }
+        if (road) return `Continue${onRoad}${dist}`;
+        return `Continue straight${dist}`;
+      }
+
+      if (type === "continue") {
+        if (road) return `Continue${onRoad}${dist}`;
+        return `Continue straight${dist}`;
+      }
+
+      if (type === "merge") {
+        if (mod.includes("left")) return `Merge left${onRoad}${dist}`;
+        if (mod.includes("right")) return `Merge right${onRoad}${dist}`;
+        return `Merge${onRoad}${dist}`;
+      }
+
+      if (type === "fork") {
+        let phrase = "At the fork, keep going";
+        if (mod === "left" || mod === "slight left") phrase = "Keep left at the fork";
+        else if (mod === "right" || mod === "slight right") phrase = "Keep right at the fork";
+        return `${phrase}${ontoRoad}${dist}`.replace(/\s+/g, " ").trim();
+      }
+
+      if (type === "end of road") {
+        const phrase = modifierToTurnPhrase(mod);
+        return `${phrase} at the end of the road${ontoRoad}${dist}`.replace(/\s+/g, " ").trim();
+      }
+
+      if (type === "roundabout" || type === "rotary") {
+        const ex = maneuver.exit != null ? `, take exit ${maneuver.exit}` : "";
+        return `Enter the roundabout${ex}${ontoRoad}${dist}`.replace(/\s+/g, " ").trim();
+      }
+
+      if (type === "roundabout turn") {
+        const ex = maneuver.exit != null ? ` — exit ${maneuver.exit}` : "";
+        return `At the roundabout${ex}${ontoRoad}${dist}`.replace(/\s+/g, " ").trim();
+      }
+
+      if (type === "exit roundabout" || type === "exit rotary") {
+        return `Exit the roundabout${ontoRoad}${dist}`.replace(/\s+/g, " ").trim();
+      }
+
+      if (type === "ramp") {
+        if (mod.includes("left")) return `Take the ramp on the left${ontoRoad}${dist}`;
+        if (mod.includes("right")) return `Take the ramp on the right${ontoRoad}${dist}`;
+        return `Take the ramp${ontoRoad}${dist}`;
+      }
+
+      if (type === "notification") {
+        if (road) return road;
+        return "Continue along the route";
+      }
+
+      const pretty = type.replace(/\s+/g, " ");
+      const tail = mod ? ` (${mod})` : "";
+      return `${pretty.charAt(0).toUpperCase() + pretty.slice(1)}${tail}${onRoad}${dist}`
+        .replace(/\s+/g, " ")
+        .trim();
+    }
+
+    /** Spoken-style distance for blind users (clear numbers). */
+    function formatDistanceVerbal(meters) {
+      if (meters == null || !Number.isFinite(meters) || meters <= 0) return "a short distance";
+      const m = Math.round(meters);
+      if (m < 1000) return `about ${m} metres`;
+      const km = m / 1000;
+      const s = km < 10 ? km.toFixed(1).replace(/\.0$/, "") : String(Math.round(km));
+      return `about ${s} kilometres`;
+    }
+
+    function modifierToBlindTurnAtJunction(mod) {
+      const m = normManeuverMod(mod);
+      const map = {
+        uturn: "Make a U-turn",
+        "sharp left": "Turn sharp left",
+        left: "Turn left",
+        "slight left": "Bear slightly left",
+        straight: "Go straight",
+        "slight right": "Bear slightly right",
+        right: "Turn right",
+        "sharp right": "Turn sharp right"
+      };
+      return map[m] || (m ? `Follow the road ${m}` : "Keep going");
+    }
+
+    /**
+     * Clear, short instructions for NOW / voice (simple English).
+     */
+    function formatStepBlindDetailed(step) {
+      const maneuver = step.maneuver || {};
+      const type = String(maneuver.type || "continue").toLowerCase().replace(/_/g, " ");
+      const mod = normManeuverMod(maneuver.modifier);
+      const road = prettifyRoadName(step.name || "");
+      const leg = formatDistanceVerbal(step.distance);
+      const onRoad = road ? ` on ${road}` : "";
+      const ontoRoad = road ? ` onto ${road}` : "";
+
+      if (type === "arrive") {
+        return road ? `You have arrived — look for ${road}.` : `You have arrived at your destination.`;
+      }
+
+      if (type === "depart") {
+        const head = bearingToHeadWord(maneuver.bearing_after);
+        if (road && head) {
+          return `Start: face ${head}. Go straight${onRoad} for ${leg}. Stay on this road.`;
+        }
+        if (road) {
+          return `Start on${onRoad}. Go straight for ${leg}.`;
+        }
+        return `Start here. Go straight until you hear the next step.`;
+      }
+
+      if (type === "turn") {
+        const turn = modifierToBlindTurnAtJunction(mod);
+        const destPhrase = ontoRoad ? `Then follow${ontoRoad}` : onRoad ? `Stay on${onRoad}` : "";
+        return `${turn}.${destPhrase ? ` ${destPhrase}` : ""} Keep going for ${leg}.`;
+      }
+
+      if (type === "new name") {
+        if (mod && mod !== "straight") {
+          const turn = modifierToBlindTurnAtJunction(mod);
+          return `Road bends — ${turn.toLowerCase()}.${ontoRoad ? ` Follow${ontoRoad}.` : ""} Continue for ${leg}.`;
+        }
+        if (road) {
+          return `Go straight${onRoad} for ${leg}.`;
+        }
+        return `Go straight for ${leg}.`;
+      }
+
+      if (type === "continue") {
+        if (road) {
+          return `Keep going straight${onRoad} for ${leg}.`;
+        }
+        return `Keep going straight for ${leg}.`;
+      }
+
+      if (type === "merge") {
+        if (mod.includes("left")) {
+          return `Merge left${onRoad}. Then go ${leg}.`;
+        }
+        if (mod.includes("right")) {
+          return `Merge right${onRoad}. Then go ${leg}.`;
+        }
+        return `Merge with traffic${onRoad}. Then go ${leg}.`;
+      }
+
+      if (type === "fork") {
+        if (mod === "left" || mod === "slight left") {
+          return `Road splits — take the left side${ontoRoad}. Go ${leg}.`;
+        }
+        if (mod === "right" || mod === "slight right") {
+          return `Road splits — take the right side${ontoRoad}. Go ${leg}.`;
+        }
+        return `Road splits — stay on the main road${ontoRoad}. Go ${leg}.`;
+      }
+
+      if (type === "end of road") {
+        const turn = modifierToBlindTurnAtJunction(mod);
+        return `End of this road. ${turn}.${ontoRoad ? ` Go${ontoRoad}.` : ""} Then ${leg}.`;
+      }
+
+      if (type === "roundabout" || type === "rotary") {
+        const ex = maneuver.exit != null ? ` Take exit ${maneuver.exit}.` : "";
+        return `Roundabout.${ex}${ontoRoad ? ` Exit${ontoRoad}.` : ""} Then go ${leg}.`;
+      }
+
+      if (type === "roundabout turn") {
+        const ex = maneuver.exit != null ? `Take exit ${maneuver.exit}.` : "Take the right exit.";
+        return `${ex}${ontoRoad ? ` Toward${ontoRoad}.` : ""} Then ${leg}.`;
+      }
+
+      if (type === "exit roundabout" || type === "exit rotary") {
+        return `Leave the roundabout${ontoRoad}. Go ${leg}.`;
+      }
+
+      if (type === "ramp") {
+        if (mod.includes("left")) {
+          return `Ramp on the left${ontoRoad}. Go ${leg}.`;
+        }
+        if (mod.includes("right")) {
+          return `Ramp on the right${ontoRoad}. Go ${leg}.`;
+        }
+        return `Take the ramp${ontoRoad}. Go ${leg}.`;
+      }
+
+      if (type === "notification") {
+        if (road) return `You are now on ${road}. Go ${leg}.`;
+        return `Keep on the route for ${leg}.`;
+      }
+
+      return formatStep(step);
+    }
+
+    /** Short line under NOW for what comes next. */
+    function summarizeNextManeuverForBlind(next) {
+      if (!next) return "";
+      const t = String(next.maneuverType || "").toLowerCase();
+      const mod = normManeuverMod(next.maneuverModifier || "");
+      const road = next.roadName || "";
+      const r = road ? ` ${road}` : "";
+
+      if (t === "arrive") return "you reach the destination";
+      if (t === "turn" || t === "end of road") {
+        const phrase = modifierToBlindTurnAtJunction(mod).toLowerCase();
+        return `${phrase}${r ? ` on${r}` : ""}`;
+      }
+      if (t === "new name" && mod && mod !== "straight") {
+        return `bend — ${modifierToBlindTurnAtJunction(mod).toLowerCase()}${r ? ` on${r}` : ""}`;
+      }
+      if (t === "fork") return "the road splits";
+      if (t === "roundabout" || t === "rotary" || t === "roundabout turn") return "a roundabout";
+      if (t === "merge") return "traffic joins your road";
+      if (r) return `stay on${r}`;
+      return "next step";
+    }
+
+    function speakNavigationStep(stepText, force = false) {
+      if (!voiceEnabled || !stepText || !("speechSynthesis" in window)) return;
+      if (!force && lastSpokenStepIndex === currentStepIndex) return;
+
+      const utterance = new SpeechSynthesisUtterance(stepText);
+      utterance.lang = "en-IN";
+      utterance.rate = 0.9;
+      utterance.pitch = 1;
+      window.speechSynthesis.cancel();
+      window.speechSynthesis.speak(utterance);
+      lastSpokenStepIndex = currentStepIndex;
+    }
+
+    const OFF_ROUTE_M = 45;
+    const STEP_ADVANCE_BUFFER_M = 18;
+
+    function updateNextStep(announce = false) {
+      const box = document.getElementById("next-step");
+      const distEl = document.getElementById("nav-distance");
+      const thenWrap = document.getElementById("nav-then");
+      const thenText = document.getElementById("then-step-text");
+
+      if (!routeSteps.length) {
+        if (userLocation && userLocation.length === 2) {
+          const trusted = hasTrustedGpsFix();
+          box.textContent = trusted
+            ? "Your location is active."
+            : "Approximate location only (not GPS-precise).";
+          if (distEl) {
+            const coords = `${userLocation[0].toFixed(5)}, ${userLocation[1].toFixed(5)}`;
+            distEl.textContent = trusted
+              ? `${coords} — Enter a destination, then tap Get Route.`
+              : `${coords} — Turn on device GPS, go outdoors if you can, then tap Use My Location. Then get a route.`;
+          }
+        } else {
+          box.textContent = "GPS location not available yet.";
+          if (distEl) {
+            distEl.textContent =
+              "You can still get route now: enter destination and tap Get Route (approximate start). For precise turn-by-turn, open this page on your phone, enable Location, then tap Use My Location.";
+          }
+        }
+        if (thenWrap) thenWrap.style.display = "none";
+        return;
+      }
+
+      const idx = Math.min(currentStepIndex, routeSteps.length - 1);
+      const cur = routeSteps[idx];
+      const curType = String(cur.maneuverType || "").toLowerCase();
+      const nextStep = idx + 1 < routeSteps.length ? routeSteps[idx + 1] : null;
+      const nextType = nextStep ? String(nextStep.maneuverType || "").toLowerCase() : "";
+      const nowLine = cur.blindText || cur.text;
+      box.textContent = nowLine;
+
+      if (userLocation && routePolylineLatLngs.length) {
+        const { along, crossTrackMeters } = distanceAlongRoutePolyline(
+          userLocation[0],
+          userLocation[1],
+          routePolylineLatLngs
+        );
+        const remain = metersToEndOfCurrentStep(along);
+        if (distEl) {
+          if (crossTrackMeters > OFF_ROUTE_M) {
+            distEl.textContent = "Off route — get back on the blue line on the map.";
+          } else if (remain != null && idx < routeSteps.length - 1) {
+            const d = formatDistanceShort(remain);
+            const maneuverNext = [
+              "turn",
+              "new name",
+              "fork",
+              "roundabout",
+              "roundabout turn",
+              "exit roundabout",
+              "rotary",
+              "exit rotary",
+              "end of road",
+              "merge",
+              "ramp"
+            ].includes(nextType);
+            const nextHint = summarizeNextManeuverForBlind(nextStep);
+            if (nextType === "arrive") {
+              distEl.textContent = `About ${d} to destination.`;
+            } else if (curType === "depart") {
+              distEl.textContent = nextHint ? `About ${d} — then ${nextHint}.` : `About ${d} to the first turn.`;
+            } else if (maneuverNext) {
+              distEl.textContent = nextHint ? `About ${d} — then ${nextHint}.` : `About ${d} on this part.`;
+            } else {
+              distEl.textContent = nextHint ? `About ${d}. Next: ${nextHint}.` : `About ${d}.`;
+            }
+          } else if (idx >= routeSteps.length - 1) {
+            distEl.textContent = "Last step — almost there.";
+          } else {
+            distEl.textContent = "";
+          }
+        }
+      } else if (distEl) {
+        distEl.textContent = "";
+      }
+
+      if (thenWrap && thenText) {
+        if (idx < routeSteps.length - 1) {
+          thenWrap.style.display = "block";
+          const next = routeSteps[idx + 1];
+          const nextFull = next.blindText || next.text;
+          thenText.textContent =
+            nextType === "arrive"
+              ? nextFull || "Next: you arrive."
+              : `Next: ${nextFull}`;
+        } else {
+          thenWrap.style.display = "none";
+          thenText.textContent = "—";
+        }
+      }
+
+      if (announce) speakNavigationStep(cur.blindText || cur.text);
+    }
+
+    function haversineMeters(a, b) {
+      const toRad = (d) => d * Math.PI / 180;
+      const R = 6371000;
+      const dLat = toRad(b[0] - a[0]);
+      const dLon = toRad(b[1] - a[1]);
+      const lat1 = toRad(a[0]);
+      const lat2 = toRad(b[0]);
+      const x = Math.sin(dLat / 2) ** 2 + Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLon / 2) ** 2;
+      return 2 * R * Math.asin(Math.sqrt(x));
+    }
+
+    function projectPointOnSegmentMeters(lat, lon, lat1, lon1, lat2, lon2) {
+      const refLat = (lat1 + lat2 + lat) / 3;
+      const cosRef = Math.cos((refLat * Math.PI) / 180);
+      const R = 6371000;
+      const ax = 0;
+      const ay = 0;
+      const bx = ((lon2 - lon1) * Math.PI / 180) * R * cosRef;
+      const by = ((lat2 - lat1) * Math.PI / 180) * R;
+      const px = ((lon - lon1) * Math.PI / 180) * R * cosRef;
+      const py = ((lat - lat1) * Math.PI / 180) * R;
+      const abx = bx - ax;
+      const aby = by - ay;
+      const ab2 = abx * abx + aby * aby;
+      let t = ab2 > 1e-6 ? (px * abx + py * aby) / ab2 : 0;
+      t = Math.max(0, Math.min(1, t));
+      const qx = ax + t * abx;
+      const qy = ay + t * aby;
+      const cross = Math.hypot(px - qx, py - qy);
+      const segLen = Math.hypot(abx, aby);
+      return { t, crossMeters: cross, segLenMeters: segLen };
+    }
+
+    /**
+     * Distance along route polyline from start to closest point on the path (meters).
+     */
+    function distanceAlongRoutePolyline(lat, lon, latlngs) {
+      if (!latlngs || latlngs.length < 2) return { along: 0, crossTrackMeters: Infinity };
+      let accumulated = 0;
+      let bestAlong = 0;
+      let bestCross = Infinity;
+      for (let i = 0; i < latlngs.length - 1; i++) {
+        const p1 = latlngs[i];
+        const p2 = latlngs[i + 1];
+        const segLen = haversineMeters(p1, p2);
+        if (segLen < 0.05) continue;
+        const proj = projectPointOnSegmentMeters(lat, lon, p1[0], p1[1], p2[0], p2[1]);
+        const along = accumulated + proj.t * segLen;
+        if (proj.crossMeters < bestCross) {
+          bestCross = proj.crossMeters;
+          bestAlong = along;
+        }
+        accumulated += segLen;
+      }
+      return { along: bestAlong, crossTrackMeters: bestCross };
+    }
+
+    function advanceStepFromRouteProgress(lat, lon) {
+      if (!routeSteps.length || !routePolylineLatLngs.length) return;
+
+      const idle = navMovementState === "SITTING" || navMovementState === "IDLE";
+      const { along, crossTrackMeters } = distanceAlongRoutePolyline(lat, lon, routePolylineLatLngs);
+
+      if (idle) {
+        updateNextStep(false);
+        return;
+      }
+
+      if (crossTrackMeters > OFF_ROUTE_M) {
+        updateNextStep(false);
+        return;
+      }
+
+      const endM = stepEndMeters[currentStepIndex];
+      if (endM == null) return;
+
+      const slack = Math.min(STEP_ADVANCE_BUFFER_M, Math.max(endM * 0.35, 6));
+      const passedStep = along >= endM - slack;
+
+      if (passedStep && currentStepIndex < routeSteps.length - 1) {
+        currentStepIndex += 1;
+        updateNextStep(true);
+        const cur = routeSteps[currentStepIndex];
+        const line = cur ? cur.blindText || cur.text : "—";
+        log(`Navigation: ${line.length > 100 ? line.slice(0, 100) + "…" : line}`, "info");
+      } else {
+        updateNextStep(false);
+      }
+    }
+
+    function metersToEndOfCurrentStep(along) {
+      const endM = stepEndMeters[currentStepIndex];
+      if (endM == null) return null;
+      return Math.max(0, endM - along);
+    }
+
+    function hasTrustedGpsFix() {
+      return (
+        lastLocationFixAt > 0 &&
+        Number.isFinite(lastLocationAccuracyM) &&
+        lastLocationAccuracyM <= MAX_TRUSTED_ACCURACY_M
+      );
+    }
+
+    function normalizedAccuracyMetres(accuracyM) {
+      if (accuracyM != null && Number.isFinite(accuracyM) && accuracyM > 0) {
+        return Math.min(accuracyM, 1e7);
+      }
+      return UNKNOWN_ACCURACY_ASSUMED_M;
+    }
+
+    function sleepMs(ms) {
+      return new Promise((resolve) => setTimeout(resolve, ms));
+    }
+
+    /**
+     * Single getCurrentPosition. Pass a number (timeout ms, high accuracy) or full options.
+     * Logs errors so timeouts and OS denials are visible (was silent before).
+     */
+    function getCurrentPositionOnce(timeoutOrOpts) {
+      const o =
+        typeof timeoutOrOpts === "number"
+          ? { timeoutMs: timeoutOrOpts, enableHighAccuracy: true, maximumAge: 0 }
+          : {
+              timeoutMs: timeoutOrOpts?.timeoutMs ?? 20000,
+              enableHighAccuracy: timeoutOrOpts?.enableHighAccuracy !== false,
+              maximumAge: timeoutOrOpts?.maximumAge ?? 0
+            };
+      return new Promise((resolve) => {
+        navigator.geolocation.getCurrentPosition(
+          (pos) => resolve(pos.coords),
+          (err) => {
+            if (err && typeof err.code === "number") {
+              const codes = ["", "PERMISSION_DENIED", "POSITION_UNAVAILABLE", "TIMEOUT"];
+              const name = codes[err.code] || "UNKNOWN";
+              log(`Geolocation: ${name}${err.message ? ` — ${err.message}` : ""}`, "warn");
+            }
+            resolve(null);
+          },
+          {
+            enableHighAccuracy: o.enableHighAccuracy,
+            timeout: o.timeoutMs,
+            maximumAge: o.maximumAge
+          }
+        );
+      });
+    }
+
+    /**
+     * Several fixes — mobile GPS improves after 1–3s; desktop often has no GPS hardware.
+     * We always try network/Wi‑Fi first (enableHighAccuracy: false) so PC browsers get a fix quickly;
+     * only using high accuracy first caused long waits or timeouts while “permission: granted”.
+     */
+    async function getGeolocationWithWarmupRetries(maxAttempts = 5) {
+      let best = null;
+      let bestAcc = Infinity;
+
+      const trackBest = (c) => {
+        if (!c) return null;
+        const a = normalizedAccuracyMetres(c.accuracy);
+        if (a <= MAX_TRUSTED_ACCURACY_M) return c;
+        if (a < bestAcc) {
+          bestAcc = a;
+          best = c;
+        }
+        return null;
+      };
+
+      const cNet = await getCurrentPositionOnce({
+        enableHighAccuracy: false,
+        timeoutMs: 15000,
+        maximumAge: 0
+      });
+      const early = trackBest(cNet);
+      if (early) return early;
+      /* Usable Wi‑Fi/network fix: show it now instead of waiting for many GPS attempts on desktop. */
+      if (best && bestAcc <= REJECT_ACCURACY_M) return best;
+
+      for (let i = 0; i < maxAttempts; i++) {
+        if (i > 0) await sleepMs(1200);
+        const c = await getCurrentPositionOnce({
+          enableHighAccuracy: true,
+          timeoutMs: i === 0 ? 22000 : 18000,
+          maximumAge: 0
+        });
+        if (!c) continue;
+        const hit = trackBest(c);
+        if (hit) return hit;
+      }
+      return best;
+    }
+
+    async function logGeolocationPermissionState() {
+      try {
+        if (!navigator.permissions || !navigator.permissions.query) return;
+        const r = await navigator.permissions.query({ name: "geolocation" });
+        log(`Geolocation permission: ${r.state}`, "info");
+      } catch (_) {
+        /* Some browsers omit Permissions API for geolocation */
+      }
+    }
+
+    /**
+     * Apply a reading from the Geolocation API. Skips coarse updates if we already hold a trusted GPS fix.
+     * Drops IP-level guesses (huge accuracy) so the map is not pinned to a wrong city.
+     * Updates lastLocationFixAt only when accuracy is good enough for routing.
+     * @returns {boolean} true if userLocation was updated
+     */
+    function applyGeolocationReading(lat, lon, accuracyM) {
+      const acc = normalizedAccuracyMetres(accuracyM);
+      if (acc > REJECT_ACCURACY_M) {
+        return false;
+      }
+      if (
+        acc > MAX_TRUSTED_ACCURACY_M &&
+        lastLocationFixAt > 0 &&
+        lastLocationAccuracyM <= MAX_TRUSTED_ACCURACY_M
+      ) {
+        return false;
+      }
+      userLocation = [lat, lon];
+      lastLocationAccuracyM = acc;
+      if (acc <= MAX_TRUSTED_ACCURACY_M) {
+        lastLocationFixAt = Date.now();
+      }
+      return true;
+    }
+
+    /**
+     * One shared getCurrentPosition per burst — stops duplicate API calls from boot + other code.
+     */
+    function getGeolocationCoordsSingleFlight(forceRefresh) {
+      if (!forceRefresh && _geolocationSingleFlight) {
+        return _geolocationSingleFlight;
+      }
+      const p = (async () => {
+        const c1 = await getCurrentPositionOnce({
+          enableHighAccuracy: false,
+          timeoutMs: 15000,
+          maximumAge: 0
+        });
+        if (c1) {
+          const a1 = normalizedAccuracyMetres(c1.accuracy);
+          if (a1 <= REJECT_ACCURACY_M) return c1;
+        }
+        return getCurrentPositionOnce({
+          enableHighAccuracy: true,
+          timeoutMs: forceRefresh ? 45000 : 28000,
+          maximumAge: 0
+        });
+      })();
+      if (!forceRefresh) {
+        _geolocationSingleFlight = p;
+        p.finally(() => {
+          if (_geolocationSingleFlight === p) _geolocationSingleFlight = null;
+        });
+      }
+      return p;
+    }
+
+    function logLocationUpdateOnce(lat, lon, accuracyM) {
+      const key = `${lat.toFixed(4)},${lon.toFixed(4)}`;
+      const now = Date.now();
+      if (key === _lastLocationLogKey && now - _lastLocationLogAt < 12000) return;
+      _lastLocationLogKey = key;
+      _lastLocationLogAt = now;
+      const acc =
+        accuracyM != null && Number.isFinite(accuracyM) ? ` ±${Math.round(accuracyM)}m` : "";
+      const tag = hasTrustedGpsFix() ? "" : " (approximate)";
+      log(`Location set: ${lat.toFixed(5)}, ${lon.toFixed(5)}${acc}${tag}`, "ok");
+    }
+
+    function pushLocationToBackend(lat, lon, accuracyM) {
+      if (!Number.isFinite(lat) || !Number.isFinite(lon)) return;
+      const key = `${lat.toFixed(5)},${lon.toFixed(5)}`;
+      const now = Date.now();
+      if (key === _lastPostedLocationKey && now - _lastLocationPostAt < 10000) return;
+
+      _lastPostedLocationKey = key;
+      _lastLocationPostAt = now;
+
+      fetch(LOCATION_UPDATE_ENDPOINT, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ lat, lon, accuracy: Number(accuracyM) || null })
+      }).catch(() => {
+        // Best effort only; route can still proceed with local coordinates.
+      });
+    }
+
+    function startLocationWatchIfNeeded() {
+      if (locationWatchId || !navigator.geolocation) return;
+      locationWatchId = navigator.geolocation.watchPosition(
+        (pos) => {
+          const { latitude, longitude, accuracy } = pos.coords;
+          const acc = normalizedAccuracyMetres(accuracy);
+          if (acc > REJECT_ACCURACY_M) return;
+          if (!applyGeolocationReading(latitude, longitude, accuracy)) return;
+          setUserMarker(latitude, longitude);
+          pushLocationToBackend(latitude, longitude, accuracy);
+          advanceStepFromRouteProgress(latitude, longitude);
+          updateNextStep(false);
+        },
+        (err) => {
+          if (err && typeof err.code === "number") {
+            const codes = ["", "PERMISSION_DENIED", "POSITION_UNAVAILABLE", "TIMEOUT"];
+            log(`Location watch: ${codes[err.code] || "error"}`, "warn");
+          }
+        },
+        { enableHighAccuracy: true, maximumAge: 0, timeout: 60000 }
+      );
+    }
+
+    function setNextStepFetchingLocation() {
+      const box = document.getElementById("next-step");
+      const distEl = document.getElementById("nav-distance");
+      if (!box || routeSteps.length) return;
+      box.textContent = "Fetching your position…";
+      if (distEl) {
+        distEl.textContent =
+          "Trying Wi‑Fi/network first, then GPS if available. On a PC this can take 15–40s; allow Windows location for this browser.";
+      }
+    }
+
+    /**
+     * @param {boolean} recenter - Pan map to user
+     * @param {boolean} forceRefresh - True for "Use My Location" (new GPS fix). False reuses recent position when watch is active.
+     */
+    async function requestLiveLocation({ recenter = true, forceRefresh = false } = {}) {
+      if (!navigator.geolocation) {
+        log("Geolocation not supported", "warn");
+        updateNextStep(false);
+        return null;
+      }
+
+      const REUSE_MAX_AGE_MS = 45000;
+      const hasUsableCache =
+        !forceRefresh &&
+        userLocation &&
+        userLocation.length === 2 &&
+        hasTrustedGpsFix() &&
+        Date.now() - lastLocationFixAt < REUSE_MAX_AGE_MS;
+
+      if (hasUsableCache) {
+        startLocationWatchIfNeeded();
+        if (recenter && map && typeof google !== "undefined" && google.maps) {
+          map.setCenter({ lat: userLocation[0], lng: userLocation[1] });
+          map.setZoom(14);
+        }
+        updateNextStep(false);
+        return userLocation;
+      }
+
+      setNextStepFetchingLocation();
+
+      let coords = null;
+      try {
+        coords = forceRefresh
+          ? await getGeolocationWithWarmupRetries(5)
+          : await getGeolocationCoordsSingleFlight(false);
+      } catch (e) {
+        log("Location error: " + (e && e.message ? e.message : String(e)), "warn");
+        coords = null;
+      }
+
+      try {
+        if (!coords) {
+          if (userLocation && userLocation.length === 2) {
+            log("Location refresh timed out — using your last known position.", "info");
+            startLocationWatchIfNeeded();
+            if (recenter && map && typeof google !== "undefined" && google.maps) {
+              map.setCenter({ lat: userLocation[0], lng: userLocation[1] });
+              map.setZoom(14);
+            }
+            return userLocation;
+          }
+          log("Location error: Timeout expired, denied, or unavailable. Check Windows Location is on for Chrome.", "warn");
+          return null;
+        }
+
+        const { latitude, longitude, accuracy } = coords;
+        const accRaw = normalizedAccuracyMetres(accuracy);
+        const applied = applyGeolocationReading(latitude, longitude, accuracy);
+        if (!applied) {
+          if (accRaw > REJECT_ACCURACY_M && !_rejectAccuracyHintLogged) {
+            log(
+              `Ignored bad location (±${Math.round(accRaw)} m). That is not GPS — it is a network guess (often the wrong city). Open this page on your phone with GPS, allow Precise location, go outdoors, tap Use My Location.`,
+              "warn"
+            );
+            _rejectAccuracyHintLogged = true;
+          }
+        }
+        if (applied) {
+          _rejectAccuracyHintLogged = false;
+          setUserMarker(latitude, longitude);
+          pushLocationToBackend(latitude, longitude, accuracy);
+          logLocationUpdateOnce(latitude, longitude, accuracy);
+          if (!hasTrustedGpsFix()) {
+            if (!_coarseLocationHintLogged) {
+              log(
+                "Location is only rough (not precise GPS yet). Move outdoors or wait a few seconds; tap Use My Location again if needed.",
+                "warn"
+              );
+              _coarseLocationHintLogged = true;
+            }
+          } else {
+            _coarseLocationHintLogged = false;
+          }
+        }
+        if (recenter && map && typeof google !== "undefined" && google.maps && userLocation && userLocation.length === 2) {
+          map.setCenter({ lat: userLocation[0], lng: userLocation[1] });
+          map.setZoom(14);
+        }
+
+        startLocationWatchIfNeeded();
+        return userLocation;
+      } finally {
+        updateNextStep(false);
+      }
+    }
+
+    async function getBackendCurrentLocation() {
+      try {
+        const resp = await fetch(CURRENT_LOCATION_ENDPOINT, { cache: "no-store" });
+        if (!resp.ok) return null;
+        const data = await resp.json();
+        const lat = Number(data?.lat ?? data?.location?.lat);
+        const lon = Number(data?.lon ?? data?.location?.lon);
+        if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null;
+        return [lat, lon];
+      } catch (_) {
+        return null;
+      }
+    }
+
+    function updateSOSPendingText() {
+      const el = document.getElementById("sos-pending-text");
+      if (!el) return;
+      el.textContent = `Emergency detected. Cancel in ${Math.max(0, sosCancelSecondsLeft)}s`;
+    }
+
+    function clearSOSPendingTimers() {
+      if (sosPendingTimer) {
+        clearTimeout(sosPendingTimer);
+        sosPendingTimer = null;
+      }
+      if (sosCountdownTimer) {
+        clearInterval(sosCountdownTimer);
+        sosCountdownTimer = null;
+      }
+    }
+
+    function setSOSButtonDefault() {
+      const btn = document.getElementById("sos-btn");
+      if (!btn) return;
+      btn.textContent = "🚨 Hold 3s for SOS";
+      btn.style.setProperty("--sos-hold-progress", "0%");
+    }
+
+    function vibratePattern(pattern) {
+      try {
+        if (navigator?.vibrate) navigator.vibrate(pattern);
+      } catch (_) {}
+    }
+
+    function startSOSHoldProgress() {
+      if (sosHoldProgressTimer) {
+        clearInterval(sosHoldProgressTimer);
+      }
+
+      sosHoldProgressTimer = setInterval(() => {
+        const btn = document.getElementById("sos-btn");
+        if (!btn || !sosHoldStartAt || sosPending) return;
+
+        const elapsed = Date.now() - sosHoldStartAt;
+        const ratio = Math.min(1, elapsed / SOS_HOLD_MS);
+        const leftSec = Math.max(0, ((SOS_HOLD_MS - elapsed) / 1000));
+
+        btn.textContent = `⏳ Hold ${leftSec.toFixed(1)}s`;
+        btn.style.setProperty("--sos-hold-progress", `${Math.round(ratio * 100)}%`);
+      }, 80);
+    }
+
+    function stopSOSHoldProgress() {
+      if (sosHoldProgressTimer) {
+        clearInterval(sosHoldProgressTimer);
+        sosHoldProgressTimer = null;
+      }
+    }
+
+    async function fetchPrimaryContact() {
+      try {
+        const resp = await fetch(SOS_CONTACTS_ENDPOINT);
+        if (!resp.ok) return null;
+        const data = await resp.json();
+        const contacts = Array.isArray(data.contacts) ? data.contacts : [];
+        return contacts.length ? contacts[0] : null;
+      } catch (_) {
+        return null;
+      }
+    }
+
+    function tryCallTrustedContact(contact) {
+      if (!contact || !contact.phone) return;
+      const cleaned = String(contact.phone).replace(/[^\d+]/g, "");
+      if (!cleaned) return;
+      log(`Calling trusted contact: ${contact.name || "Contact"} (${cleaned})`, "warn");
+      window.location.href = `tel:${cleaned}`;
+    }
+
+    async function sendSOSNow(reason = "Emergency assistance needed") {
+      let location = null;
+
+      if (userLocation && userLocation.length === 2) {
+        location = { lat: userLocation[0], lon: userLocation[1] };
+      } else {
+        const latestLocation = await requestLiveLocation({ recenter: false });
+        if (latestLocation) {
+          location = { lat: latestLocation[0], lon: latestLocation[1] };
+        }
+      }
+
+      try {
+        const resp = await fetch(SOS_ENDPOINT, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            reason,
+            location,
+            source: "movement_obstacle_dashboard"
+          })
+        });
+        if (!resp.ok) throw new Error("HTTP " + resp.status);
+
+        const data = await resp.json();
+        const count = Number(data.contacts_notified || 0);
+        log(`SOS sent successfully to ${count} trusted contact(s)`, "warn");
+        speakBackendText("SOS alert sent", true);
+
+        let primary = data.primary_contact || null;
+        if (!primary) {
+          primary = await fetchPrimaryContact();
+        }
+        tryCallTrustedContact(primary);
+      } catch (err) {
+        log("SOS failed: " + err.message, "warn");
+        speakBackendText("Failed to send SOS alert", true);
+      }
+    }
+
+    function armPendingSOS() {
+      if (sosPending) return;
+      sosPending = true;
+      stopSOSHoldProgress();
+      setSOSButtonDefault();
+      vibratePattern([120, 60, 120]);
+
+      const wrap = document.getElementById("sos-pending");
+      if (wrap) wrap.style.display = "flex";
+
+      sosCancelSecondsLeft = Math.ceil(SOS_CANCEL_WINDOW_MS / 1000);
+      updateSOSPendingText();
+
+      clearSOSPendingTimers();
+      sosCountdownTimer = setInterval(() => {
+        sosCancelSecondsLeft -= 1;
+        updateSOSPendingText();
+      }, 1000);
+
+      sosPendingTimer = setTimeout(async () => {
+        clearSOSPendingTimers();
+        sosPending = false;
+        if (wrap) wrap.style.display = "none";
+        await sendSOSNow("Auto SOS: long-press emergency trigger");
+      }, SOS_CANCEL_WINDOW_MS);
+
+      log("SOS armed. Tap Cancel if this was accidental.", "warn");
+      speakBackendText("Emergency detected. Tap cancel to stop SOS.", true);
+    }
+
+    function startSOSHold() {
+      if (sosPending || sosHoldTimer) return;
+      sosHoldStartAt = Date.now();
+      vibratePattern(50);
+
+      const btn = document.getElementById("sos-btn");
+      if (btn) {
+        btn.textContent = "⏳ Keep holding...";
+        btn.disabled = false;
+      }
+
+      startSOSHoldProgress();
+
+      sosHoldTimer = setTimeout(() => {
+        sosHoldTimer = null;
+        armPendingSOS();
+      }, SOS_HOLD_MS);
+
+      log("Hold SOS button for emergency. Camera and sensors still active.", "info");
+    }
+
+    function cancelSOSHold() {
+      if (!sosHoldTimer) return;
+
+      clearTimeout(sosHoldTimer);
+      sosHoldTimer = null;
+      stopSOSHoldProgress();
+      setSOSButtonDefault();
+
+      const heldFor = Date.now() - sosHoldStartAt;
+      if (heldFor > 250) {
+        log("SOS not armed (hold for full 3 seconds)", "info");
+      }
+    }
+
+    function cancelPendingSOS() {
+      if (!sosPending) return;
+      sosPending = false;
+      clearSOSPendingTimers();
+      vibratePattern([70, 40, 70]);
+
+      const wrap = document.getElementById("sos-pending");
+      if (wrap) wrap.style.display = "none";
+
+      log("SOS canceled by user", "ok");
+      speakBackendText("SOS canceled", true);
+      setTimeout(() => setSOSButtonDefault(), 200);
+    }
+
+    function initSOSHold() {
+      const btn = document.getElementById("sos-btn");
+      if (!btn) return;
+
+      const onStart = (e) => {
+        if (sosPending) {
+          e.preventDefault();
+          e.stopPropagation();
+          return;
+        }
+        e.preventDefault();
+        e.stopPropagation();
+        startSOSHold();
+      };
+
+      const onEnd = (e) => {
+        if (sosPending) {
+          e.preventDefault();
+          e.stopPropagation();
+          return;
+        }
+        e.preventDefault();
+        e.stopPropagation();
+        cancelSOSHold();
+      };
+
+      if (window.PointerEvent) {
+        btn.addEventListener("pointerdown", onStart, { capture: true });
+        btn.addEventListener("pointerup", onEnd, { capture: true });
+        btn.addEventListener("pointercancel", onEnd, { capture: true });
+        btn.addEventListener("pointerleave", onEnd, { capture: true });
+      } else {
+        btn.addEventListener("touchstart", onStart, { passive: false, capture: true });
+        btn.addEventListener("touchend", onEnd, { passive: false, capture: true });
+        btn.addEventListener("touchcancel", onEnd, { passive: false, capture: true });
+        btn.addEventListener("mousedown", onStart, { capture: true });
+        btn.addEventListener("mouseup", onEnd, { capture: true });
+        btn.addEventListener("mouseleave", onEnd, { capture: true });
+      }
+
+      btn.addEventListener("contextmenu", (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+      });
+
+      document.addEventListener("visibilitychange", () => {
+        if (document.hidden) {
+          cancelSOSHold();
+          cancelPendingSOS();
+        }
+      });
+
+      log("📱 SOS: Hold button for 3s. Camera & sensors stay active throughout.", "ok");
+    }
+
+    function normalizePlaceQuery(s) {
+      return String(s || "")
+        .toLowerCase()
+        .normalize("NFD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .replace(/\s+/g, " ")
+        .trim();
+    }
+
+    function escapeRegExp(s) {
+      return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    }
+
+    /**
+     * Strong match on the place the user meant — not a parent county containing the same word.
+     * "Kallai" must not beat "Kulithalai" via fuzzy substring on display_name.
+     */
+    function nominatimTextMatchScore(placeName, r) {
+      const qFull = normalizePlaceQuery(placeName);
+      const parts = qFull.split(/[,\s]+/).map((t) => t.trim()).filter((t) => t.length >= 2);
+      const qToken = parts[0] || qFull;
+      if (!qToken) return 0;
+
+      const addr = r.address || {};
+      const selfFields = [r.name, addr.city, addr.town, addr.village, addr.hamlet, addr.suburb].filter(Boolean);
+      for (const f of selfFields) {
+        const n = normalizePlaceQuery(f);
+        if (!n) continue;
+        if (n === qFull || n === qToken) return 2500;
+        if (new RegExp("^" + escapeRegExp(qToken) + "(\\s|,|$)", "i").test(n)) return 2400;
+      }
+
+      const firstSeg = normalizePlaceQuery((r.display_name || "").split(",")[0] || "");
+      if (firstSeg && (firstSeg === qToken || firstSeg === qFull)) return 2300;
+      if (firstSeg && new RegExp("\\b" + escapeRegExp(qToken) + "\\b", "i").test(firstSeg)) return 2200;
+
+      /* Weak: query only appears later (e.g. "Velagoundampatti, Namakkal, TN" when user asked for Namakkal). */
+      const dn = normalizePlaceQuery(r.display_name || "");
+      if (qToken.length >= 4 && dn && new RegExp("\\b" + escapeRegExp(qToken) + "\\b", "i").test(dn)) {
+        return 120;
+      }
+      return 0;
+    }
+
+    /** True when the place itself is called what the user typed (not only the district in the address). */
+    function nominatimHasStrongPrimaryName(placeName, r) {
+      return nominatimTextMatchScore(placeName, r) >= 2000;
+    }
+
+    /** Merge Nominatim result lists without duplicate coordinates. */
+    function mergeNominatimResults(lists) {
+      const seen = new Set();
+      const out = [];
+      for (const list of lists) {
+        if (!list || !list.length) continue;
+        for (const r of list) {
+          const lat = parseFloat(r.lat);
+          const lon = parseFloat(r.lon);
+          if (!Number.isFinite(lat) || !Number.isFinite(lon)) continue;
+          const k = `${lat.toFixed(4)},${lon.toFixed(4)}`;
+          if (seen.has(k)) continue;
+          seen.add(k);
+          out.push(r);
+        }
+      }
+      return out;
+    }
+
+    /**
+     * Pick the destination OSM hit. Do not use “distance from user” — routing A→B must not prefer
+     * a village near the user that only mentions the destination district in its address.
+     */
+    function pickBestNominatimResult(results, placeName) {
+      if (!results || !results.length) return null;
+      const raw = String(placeName || "").trim();
+      const q = normalizePlaceQuery(raw);
+      const qToken = q.split(/[,\s]+/).filter((t) => t.length >= 2 && t !== "the")[0] || q;
+
+      /*
+       * Type ranks — navigable places score high; administrative boundaries
+       * (districts/counties) are not destinations, so they score very low.
+       */
+      const typeRank = {
+        city: 500,
+        town: 480,
+        municipality: 460,
+        village: 300,
+        suburb: 250,
+        hamlet: 200,
+        locality: 180,
+        neighbourhood: 150,
+        quarter: 140,
+        administrative: -200
+      };
+
+      const strongPrimary = results.filter((r) => nominatimHasStrongPrimaryName(raw, r));
+      const pool = strongPrimary.length ? strongPrimary : results;
+
+      function secondaryScore(r) {
+        const addr = r.address || {};
+        const type = String(r.type || "").toLowerCase();
+        const addrType = String(r.addresstype || "").toLowerCase();
+        const name = String(r.name || "").toLowerCase();
+        const city = String(addr.city || "").toLowerCase();
+        const town = String(addr.town || "").toLowerCase();
+        const village = String(addr.village || "").toLowerCase();
+        const state = String(addr.state || "").toLowerCase();
+
+        let s = typeRank[type] != null ? typeRank[type] : 15;
+
+        if (type === "administrative") {
+          if (addrType === "town" || addrType === "city" || addrType === "municipality") {
+            s = 420;
+          }
+        }
+
+        s += (parseFloat(r.importance) || 0) * 200;
+
+        if (state && state.includes("tamil")) s += 8;
+
+        const primaryMatch =
+          qToken &&
+          (name === qToken ||
+            city === qToken ||
+            town === qToken ||
+            village === qToken);
+        if (primaryMatch) s += 400;
+        else if (qToken && (name.includes(qToken) || city.includes(qToken) || town.includes(qToken))) s += 120;
+        else if (qToken && village.includes(qToken)) s += 60;
+
+        if (!primaryMatch && (type === "village" || type === "hamlet" || type === "neighbourhood")) s -= 80;
+
+        return s;
+      }
+
+      const sorted = [...pool].sort((a, b) => {
+        const ta = nominatimTextMatchScore(raw, a);
+        const tb = nominatimTextMatchScore(raw, b);
+        if (tb !== ta) return tb - ta;
+        return secondaryScore(b) - secondaryScore(a);
+      });
+      return sorted[0];
+    }
+
+    async function nominatimSearch(paramsObj) {
+      const params = new URLSearchParams({
+        format: "json",
+        addressdetails: "1",
+        limit: "25",
+        ...paramsObj
+      });
+      const url = `https://nominatim.openstreetmap.org/search?${params.toString()}`;
+      const resp = await fetch(url, {
+        headers: {
+          "Accept-Language": "en",
+          "User-Agent": "BlindNavigationAssist/1.0 (education; contact: local)"
+        }
+      });
+      if (!resp.ok) throw new Error("Destination lookup failed");
+      return resp.json();
+    }
+
+    /**
+     * Resolve a place name to [lat, lon]. Structured city search + free-text; pick best name match.
+     */
+    async function geocodeDestination(placeName) {
+      const trimmed = String(placeName || "").trim();
+      if (!trimmed) throw new Error("Empty destination");
+
+      const query = `${trimmed}, Tamil Nadu, India`;
+      const chunks = [];
+
+      const simpleName = !trimmed.includes(",");
+      if (simpleName) {
+        try {
+          const structured = await nominatimSearch({
+            city: trimmed,
+            state: "Tamil Nadu",
+            country: "India",
+            countrycodes: "in"
+          });
+          if (structured.length) chunks.push(structured);
+        } catch (_) {}
+      }
+
+      try {
+        const freeIn = await nominatimSearch({
+          q: query,
+          countrycodes: "in"
+        });
+        if (freeIn.length) chunks.push(freeIn);
+      } catch (_) {}
+
+      try {
+        const settlements = await nominatimSearch({
+          q: query,
+          countrycodes: "in",
+          featuretype: "settlement"
+        });
+        if (settlements.length) chunks.push(settlements);
+      } catch (_) {}
+
+      let data = mergeNominatimResults(chunks);
+
+      if (!data.length) {
+        data = await nominatimSearch({ q: query });
+      }
+
+      if (!data.length) throw new Error("Destination not found");
+
+      const best = pickBestNominatimResult(data, trimmed);
+      if (!best) throw new Error("Destination not found");
+
+      const lat = parseFloat(best.lat);
+      const lon = parseFloat(best.lon);
+      if (!Number.isFinite(lat) || !Number.isFinite(lon)) throw new Error("Bad coordinates from lookup");
+
+      const label = best.display_name || trimmed;
+      log(`Destination: ${label}`, "info");
+
+      return [lat, lon];
+    }
+
+    async function buildRoute() {
+      if (routeBuildInProgress) {
+        log("Route is already being calculated — please wait.", "info");
+        return false;
+      }
+
+      const destName = document.getElementById("destination").value.trim();
+      if (!destName) {
+        log("Enter destination first", "warn");
+        return false;
+      }
+
+      routeBuildInProgress = true;
+      let startForFallback = null;
+      try {
+        let latestLocation = null;
+
+        // PRIMARY: Use stored/manual location immediately (NO WAIT)
+        if (userLocation && userLocation.length === 2) {
+          latestLocation = [Number(userLocation[0]), Number(userLocation[1])];
+          log("Using manual/stored location for route (instant).", "ok");
+        }
+
+        // FALLBACK 1: Try backend stored location quickly  
+        if (!latestLocation) {
+          latestLocation = await getBackendCurrentLocation().catch(() => null);
+          if (latestLocation) {
+            log("Using server-stored location for route start.", "ok");
+          }
+        }
+
+        // FALLBACK 2: ONLY if no manual/stored location, wait for GPS (15s max, not 22s)
+        if (!latestLocation) {
+          log("No stored location. Attempting GPS fix (15 seconds max)…", "info");
+          const LOCATION_WAIT_MS = 15000; // Reduced from 22s
+          latestLocation = await Promise.race([
+            requestLiveLocation({ recenter: false, forceRefresh: true }),
+            sleepMs(LOCATION_WAIT_MS).then(() => null)
+          ]);
+        }
+
+        if (!latestLocation) {
+          log("Current location unavailable. Tap Use My Location, allow GPS permission, then try Get Route again.", "warn");
+          return false;
+        }
+
+        // Route must start from real current GPS (not rough/IP estimate).
+        if (!hasTrustedGpsFix()) {
+          log("Waiting for precise GPS fix from your current location...", "info");
+          await requestLiveLocation({ recenter: true, forceRefresh: true });
+          if (!hasTrustedGpsFix() || !userLocation || userLocation.length !== 2) {
+            log("Precise current location not ready. Go outdoors, keep GPS ON, tap Use My Location, then Get Route.", "warn");
+            return false;
+          }
+          latestLocation = [Number(userLocation[0]), Number(userLocation[1])];
+        }
+        startForFallback = latestLocation;
+
+        if (!map || typeof google === "undefined" || !google.maps) {
+          log("Map is not ready — check Google Maps API key.", "warn");
+          return false;
+        }
+
+        let latlngs = [];
+        let destinationLatLng = null;
+        let totalDistanceM = 0;
+        let totalDurationS = 0;
+        let routeStepsRaw = [];
+        let usedBackend = false;
+
+        try {
+          const navResp = await fetch(NAVIGATE_ENDPOINT, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              lat: latestLocation[0],
+              lon: latestLocation[1],
+              destination: destName
+            })
+          });
+          if (navResp.ok) {
+            const navJson = await navResp.json();
+            console.log("Backend route response:", navJson);
+            if (navJson && navJson.status === "success" && Array.isArray(navJson.route_coords) && navJson.route_coords.length >= 2) {
+              latlngs = navJson.route_coords
+                .map((p) => [Number(p[0]), Number(p[1])])
+                .filter((ll) => Number.isFinite(ll[0]) && Number.isFinite(ll[1]));
+              if (navJson.destination) {
+                const dLat = Number(navJson.destination.lat);
+                const dLon = Number(navJson.destination.lon);
+                if (Number.isFinite(dLat) && Number.isFinite(dLon)) {
+                  destinationLatLng = [dLat, dLon];
+                }
+              }
+              totalDistanceM = Number(navJson.distance_m || 0);
+              if (!Number.isFinite(totalDistanceM) || totalDistanceM <= 0) {
+                totalDistanceM = Number(navJson.distance_km || 0) * 1000;
+              }
+              totalDurationS = Number(navJson.duration_s || 0);
+              if (!Number.isFinite(totalDurationS) || totalDurationS <= 0) {
+                totalDurationS = Number(navJson.duration_min || 0) * 60;
+              }
+              routeStepsRaw = Array.isArray(navJson.steps) ? navJson.steps : [];
+              usedBackend = latlngs.length >= 2;
+              log(`Backend route: ${navJson.distance_km} km, ${navJson.duration_min} min (${navJson.source})`, "ok");
+            } else {
+              console.warn("Backend response missing required fields:", navJson);
+            }
+          } else {
+            let errJson = null;
+            try {
+              errJson = await navResp.json();
+            } catch (_) {
+              errJson = null;
+            }
+            console.warn("Backend error:", errJson);
+            log(`Backend route failed: ${errJson?.message || "unknown error"}`, "warn");
+          }
+        } catch (err) {
+          console.warn("Backend fetch error:", err);
+          log(`Backend route service error: ${err.message}`, "warn");
+          usedBackend = false;
+        }
+
+        if (!usedBackend) {
+          const dest = await geocodeDestination(destName);
+          destinationLatLng = dest;
+          const routeUrl = `https://router.project-osrm.org/route/v1/walking/${latestLocation[1]},${latestLocation[0]};${dest[1]},${dest[0]}?overview=full&geometries=geojson&steps=true`;
+          const routeResp = await fetch(routeUrl);
+          if (!routeResp.ok) throw new Error("Route service unavailable");
+          const routeData = await routeResp.json();
+          if (!routeData.routes || !routeData.routes.length) throw new Error("No route found");
+          const route = routeData.routes[0];
+          const coords = route.geometry && route.geometry.coordinates ? route.geometry.coordinates : [];
+          latlngs = coords.map((c) => [c[1], c[0]]).filter((ll) => Number.isFinite(ll[0]) && Number.isFinite(ll[1]));
+          totalDistanceM = Number(route.distance || 0);
+          totalDurationS = Number(route.duration || 0);
+          routeStepsRaw = route.legs?.[0]?.steps || [];
+        }
+
+        if (latlngs.length < 2) throw new Error("Route has no drawable path");
+        routePolylineLatLngs = latlngs;
+
+        if (routeLine) routeLine.setMap(null);
+        routeLine = new google.maps.Polyline({
+          path: latlngs.map((ll) => ({ lat: ll[0], lng: ll[1] })),
+          geodesic: true,
+          strokeColor: "#00e5ff",
+          strokeOpacity: 0.92,
+          strokeWeight: 5,
+          zIndex: 2,
+          map
+        });
+
+        if (!destinationLatLng || destinationLatLng.length !== 2) {
+          destinationLatLng = latlngs[latlngs.length - 1];
+        }
+
+        if (destMarker) destMarker.setMap(null);
+        destMarker = new google.maps.Marker({
+          position: { lat: destinationLatLng[0], lng: destinationLatLng[1] },
+          map,
+          title: "Destination"
+        });
+
+        fitMapToRoutePath(latlngs);
+
+        const distanceKm = totalDistanceM > 0 ? (totalDistanceM / 1000).toFixed(1) + " km" : "—";
+        const durationMin = totalDurationS > 0 ? Math.round(totalDurationS / 60) + " min" : "—";
+        document.getElementById("route-distance").textContent = distanceKm;
+        document.getElementById("route-duration").textContent = durationMin;
+
+        let cumulativeM = 0;
+        stepEndMeters = [];
+
+        const backendStringSteps = routeStepsRaw.length && typeof routeStepsRaw[0] === "string";
+        if (backendStringSteps) {
+          const avgStepM = routeStepsRaw.length > 0 ? Math.max(30, totalDistanceM / routeStepsRaw.length) : 80;
+          routeSteps = routeStepsRaw.map((line, i) => {
+            const distancePart = i < routeStepsRaw.length - 1 ? avgStepM : Math.max(10, totalDistanceM - cumulativeM);
+            cumulativeM += distancePart;
+            stepEndMeters.push(cumulativeM);
+            return {
+              text: String(line || "Continue"),
+              blindText: String(line || "Continue"),
+              roadName: "",
+              maneuverModifier: "",
+              location: null,
+              distance: distancePart,
+              maneuverType: i === routeStepsRaw.length - 1 ? "arrive" : "continue"
+            };
+          });
+        } else {
+          const steps = Array.isArray(routeStepsRaw) ? routeStepsRaw : [];
+          routeSteps = steps.map((s) => {
+            cumulativeM += s.distance || 0;
+            stepEndMeters.push(cumulativeM);
+            const roadName = prettifyRoadName(s.name || "");
+            return {
+              text: formatStep(s),
+              blindText: formatStepBlindDetailed(s),
+              roadName,
+              maneuverModifier: normManeuverMod((s.maneuver || {}).modifier),
+              location: s.maneuver?.location || null,
+              distance: s.distance || 0,
+              maneuverType: (s.maneuver || {}).type || "continue"
+            };
+          });
+        }
+
+        if (!routeSteps.length) {
+          routeSteps = [{
+            text: "Proceed to destination.",
+            blindText: "Proceed to destination.",
+            roadName: "",
+            maneuverModifier: "",
+            location: null,
+            distance: totalDistanceM || 0,
+            maneuverType: "continue"
+          }];
+          stepEndMeters = [Math.max(10, totalDistanceM || 10)];
+        }
+        currentStepIndex = 0;
+        lastSpokenStepIndex = -1;
+        // Do not speak full route immediately; speak only when movement advances to next step.
+        updateNextStep(false);
+
+        const stepsEl = document.getElementById("steps");
+        stepsEl.innerHTML = routeSteps
+          .map(
+            (s, i) =>
+              `<div class="step"><span class="step-num">${i + 1}.</span> ${s.blindText || s.text}</div>`
+          )
+          .join("");
+
+        if (userLocation && userLocation.length === 2) {
+          advanceStepFromRouteProgress(userLocation[0], userLocation[1]);
+          updateNextStep(false);
+        }
+
+        log(`Route loaded to ${destName}`, "ok");
+        return true;
+      } catch (error) {
+        log("Route error: " + error.message, "warn");
+
+        try {
+          const destApprox = await geocodeDestination(destName);
+          let startApprox = startForFallback;
+          if (!startApprox && userLocation && userLocation.length === 2) {
+            startApprox = [Number(userLocation[0]), Number(userLocation[1])];
+          }
+          if (!startApprox) {
+            startApprox = await getBackendCurrentLocation();
+          }
+          if (!startApprox) {
+            log("Cannot estimate distance without current location. Tap Use My Location first.", "warn");
+            return false;
+          }
+
+          const approxMeters = haversineMeters(startApprox, destApprox);
+          const approxMin = Math.max(1, Math.round(approxMeters / 72));
+
+          if (Number.isFinite(approxMeters) && approxMeters > 0) {
+            document.getElementById("route-distance").textContent =
+              (approxMeters / 1000).toFixed(1) + " km (approx)";
+            document.getElementById("route-duration").textContent =
+              approxMin + " min (approx)";
+
+            const stepsEl = document.getElementById("steps");
+            if (stepsEl) {
+                stepsEl.innerHTML =
+                  `<div class="step"><span class="step-num">1.</span> Route service is unavailable now. Approximate distance from your current location is shown. Try Get Route again.</div>`;
+              }
+            log("Showing approximate distance until full route is available.", "warn");
+          }
+        } catch (_) {
+          // Keep existing UI state if even approximate fallback fails.
+        }
+        return false;
+      } finally {
+        routeBuildInProgress = false;
+      }
+    }
+
+    function clearRoute() {
+      if (routeLine) {
+        routeLine.setMap(null);
+        routeLine = null;
+      }
+      if (destMarker) {
+        destMarker.setMap(null);
+        destMarker = null;
+      }
+      routeSteps = [];
+      routePolylineLatLngs = [];
+      stepEndMeters = [];
+      currentStepIndex = 0;
+      lastSpokenStepIndex = -1;
+      document.getElementById("route-distance").textContent = "—";
+      document.getElementById("route-duration").textContent = "—";
+      document.getElementById("steps").innerHTML = "";
+      const details = document.getElementById("route-steps-details");
+      if (details) details.open = false;
+      updateNextStep();
+      stopFullRouteNarration();
+      if ("speechSynthesis" in window) window.speechSynthesis.cancel();
+      log("Route cleared", "info");
+    }
+
+    function bootApp() {
+    initSOSHold();
+    updateCameraPreviewState(false);
+    logGeolocationPermissionState();
+    requestLiveLocation({ recenter: true, forceRefresh: true });
+    setInterval(pollStatus, 2500);
+    pollStatus();
+
+    // Register service worker for PWA offline support
+    if ('serviceWorker' in navigator && window.isSecureContext) {
+      navigator.serviceWorker.register('/sw.js', { scope: '/' })
+        .then(registration => {
+          log("📱 PWA ready. Add to home screen for offline access.", "ok");
+          console.log("Service Worker registered:", registration);
+        })
+        .catch(error => {
+          log("PWA offline mode unavailable on this connection.", "warn");
+          console.log("Service Worker registration failed:", error);
+        });
+    } else if ('serviceWorker' in navigator) {
+      log("PWA offline mode skipped (requires secure context).", "warn");
+    }
+
+    // ========== AUTO-FILL DESTINATION FROM URL ==========
+    const urlParams = new URLSearchParams(window.location.search);
+    const urlDestination = urlParams.get('dest');
+    const navType = urlParams.get('type');
+    const language = urlParams.get('lang') || 'english';
+
+    if (urlDestination) {
+      // Fill destination field
+      document.getElementById('destination').value = urlDestination;
+      
+      // Show auto-route status, hide manual button
+      document.getElementById('auto-route-status').style.display = 'block';
+      document.getElementById('get-route-btn').style.display = 'none';
+      
+      // Auto-start sensors for obstacle detection
+      setTimeout(() => {
+        log("🚀 Auto-starting sensors and camera...", "info");
+        startSensor();
+        
+        // Hide start sensor button since it's auto-started
+        const startBtn = document.getElementById('start-btn');
+        if (startBtn) {
+          startBtn.style.display = 'none';
+        }
+      }, 500);
+      
+      // Speak welcome
+      setTimeout(() => {
+        const msg = language === 'tamil' ?
+          `${urlDestination} க்கு outdoor navigation தொடங்குகிறது. Sensor மற்றும் camera active ஆகிறது.` :
+          `Starting outdoor navigation to ${urlDestination}. Activating sensors and camera.`;
+        speakBackendText(msg, false);
+      }, 1500);
+
+      // Auto-build route after 2 seconds (faster GPS lock)
+      setTimeout(async () => {
+        log(`Auto-building route to ${urlDestination}...`, "info");
+        document.getElementById('auto-route-status').textContent = '🧭 Building route to ' + urlDestination + '...';
+        
+        // Auto-save location to backend if available
+        if (userLocation && userLocation.length === 2) {
+          await fetch("/location", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ lat: userLocation[0], lon: userLocation[1] })
+          }).catch(err => console.warn("Auto-save location:", err));
+        }
+        
+        const ok = await buildRoute();
+        document.getElementById('auto-route-status').textContent = ok
+          ? '✅ Route Active - Follow Instructions'
+          : '⚠️ Route failed. Tap Use My Location, then Get Route again.';
+      }, 2000);
+    }
+
+    // ========== EMERGENCY VOICE DETECTION ==========
+    let emergencyRecognition = null;
+    let isEmergencyListening = false;
+    let emergencyRecognitionRunning = false;
+    let emergencyRestartTimer = null;
+
+    function safeStartEmergencyRecognition(delayMs = 0) {
+      if (!isEmergencyListening || !emergencyRecognition || emergencyRecognitionRunning) return;
+      if (emergencyRestartTimer) {
+        clearTimeout(emergencyRestartTimer);
+        emergencyRestartTimer = null;
+      }
+      emergencyRestartTimer = setTimeout(() => {
+        if (!isEmergencyListening || !emergencyRecognition || emergencyRecognitionRunning) return;
+        try {
+          emergencyRecognition.start();
+        } catch (e) {
+          const msg = String(e && e.message ? e.message : e);
+          if (!/already started/i.test(msg)) {
+            console.log("Emergency listener start failed:", msg);
+          }
+        }
+      }, Math.max(0, delayMs));
+    }
+
+    function startEmergencyListener() {
+      const SpeechRecognitionClass = window.SpeechRecognition || window.webkitSpeechRecognition;
+      if (!SpeechRecognitionClass || isEmergencyListening) return;
+      
+      emergencyRecognition = new SpeechRecognitionClass();
+      emergencyRecognition.continuous = true;
+      emergencyRecognition.interimResults = true;
+      emergencyRecognition.lang = "en-US";
+
+      emergencyRecognition.onstart = () => {
+        emergencyRecognitionRunning = true;
+      };
+      
+      emergencyRecognition.onresult = (event) => {
+        const last = event.results.length - 1;
+        const text = event.results[last][0].transcript.toLowerCase();
+        
+        console.log("Emergency listener heard:", text);
+        
+        // Detect emergency keywords
+        if (text.includes("emergency") || 
+            text.includes("help") || 
+            text.includes("sos") ||
+            text.includes("அவசரம்") ||
+            text.includes("உதவி")) {
+          
+          handleEmergency();
+        }
+      };
+      
+      emergencyRecognition.onerror = (event) => {
+        emergencyRecognitionRunning = false;
+        if ((event.error === "no-speech" || event.error === "aborted" || event.error === "audio-capture") && isEmergencyListening) {
+          safeStartEmergencyRecognition(900);
+        }
+      };
+      
+      emergencyRecognition.onend = () => {
+        emergencyRecognitionRunning = false;
+        if (isEmergencyListening) {
+          safeStartEmergencyRecognition(600);
+        }
+      };
+      
+      try {
+        isEmergencyListening = true;
+        safeStartEmergencyRecognition(0);
+        console.log("🚨 Emergency voice detection active");
+        log("🚨 Say 'Emergency' or 'Help' to activate SOS", "info");
+      } catch (e) {
+        console.error("Failed to start emergency listener:", e);
+      }
+    }
+
+    function handleEmergency() {
+      console.log("🚨 EMERGENCY DETECTED VIA VOICE!");
+      
+      isEmergencyListening = false;
+      emergencyRecognitionRunning = false;
+      if (emergencyRestartTimer) {
+        clearTimeout(emergencyRestartTimer);
+        emergencyRestartTimer = null;
+      }
+      if (emergencyRecognition) {
+        try {
+          emergencyRecognition.stop();
+        } catch (_) {}
+      }
+      
+      if (navigator.vibrate) {
+        navigator.vibrate([200, 100, 200]);
+      }
+      
+      speakBackendText("Emergency mode activated. Opening SOS page.", true);
+      
+      setTimeout(() => {
+        window.location.href = "/frontend/sos.html?emergency=voice";
+      }, 1500);
+    }
+
+    // Start emergency listener after 3 seconds
+    setTimeout(() => {
+      startEmergencyListener();
+    }, 3000);
+
+    }
+
+    updateNextStep(false);
+    loadGoogleMapsAndBoot();
+
+  </script>
+</body>
+</html>
